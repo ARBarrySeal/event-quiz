@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b0f0d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Event Quiz · Play</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  [hidden] { display: none !important; }
+  html, body { height: 100%; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+  body { display: flex; flex-direction: column; min-height: 100dvh; }
+  .top { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;
+    padding-top: max(12px, env(safe-area-inset-top)); background: var(--panel); border-bottom: 1px solid var(--line); font-weight: 700; }
+  .top .sc { font-family: var(--mono); color: var(--accent); }
+  .screen { display: none; flex: 1; flex-direction: column; padding: 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); gap: 14px; }
+  .screen.on { display: flex; }
+  .center { align-items: center; justify-content: center; text-align: center; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; width: min(440px, 100%); display: grid; gap: 12px; margin: auto; }
+  h1, h2 { margin: 0; } .muted { color: var(--muted); font-size: 14px; }
+  label.chk { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--muted); text-align: left; }
+  label.chk input { width: 22px; height: 22px; flex: none; margin: 0; }
+  .pinin { font: 800 32px var(--mono); text-align: center; letter-spacing: .2em; }
+  .big { font-size: 72px; line-height: 1; }
+  /* answer buttons */
+  .qhead { display: flex; justify-content: space-between; align-items: center; font-weight: 700; color: var(--muted); }
+  .qhead .t { font: 800 22px var(--mono); color: var(--text); background: var(--panel); border-radius: 999px; padding: 4px 14px; }
+  .qtext { font-size: 18px; font-weight: 700; text-align: center; }
+  .answers { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .answers.n2 { grid-template-columns: 1fr; }
+  .ans { border: 0; border-radius: 14px; color: #fff; font-size: 17px; font-weight: 700; padding: 12px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 110px; cursor: pointer; }
+  .ans .shape { width: 44px; height: 44px; }
+  .ans:active { transform: scale(.97); filter: brightness(1.15); }
+  .answers.locked .ans { pointer-events: none; }
+  /* result */
+  #s-result.good { background: #1f7a0a; } #s-result.bad { background: #b0142f; }
+  .pts { font: 800 40px var(--mono); }
+  .pill { background: rgba(0,0,0,.3); border-radius: 999px; padding: 8px 18px; font-weight: 700; }
+  .spin { width: 48px; height: 48px; border-radius: 50%; border: 5px solid var(--line); border-top-color: var(--accent); animation: sp 1s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg) } }
+  @keyframes pop { from { transform: scale(.6); opacity: 0 } }
+  .pop { animation: pop .3s ease-out; }
+</style>
+</head>
+<body>
+<div class="top" id="top" hidden><span id="tName"></span><span class="sc" id="tScore">0</span></div>
+
+<!-- 1. check-in -->
+<section id="s-join" class="screen on">
+  <form class="card" id="joinForm" autocomplete="on">
+    <h2 id="evTitle">Join the game</h2>
+    <div class="muted">Check in to play. Faster right answers score more.</div>
+    <input id="pin" class="pinin" inputmode="numeric" pattern="\d{6}" maxlength="6" placeholder="PIN" required>
+    <input id="name" maxlength="24" placeholder="Screen name (shown on the big screen)" required autocomplete="nickname">
+    <input id="email" type="email" maxlength="120" placeholder="Email" required autocomplete="email">
+    <input id="phone" type="tel" maxlength="30" placeholder="Phone (optional)" autocomplete="tel">
+    <input id="linkedin" maxlength="200" placeholder="LinkedIn URL or handle (optional)" autocapitalize="off">
+    <label class="chk"><input type="checkbox" id="consent"> <span>OK to contact me about this event and related services. You can opt out anytime.</span></label>
+    <button class="btn" id="joinBtn" type="submit">Join</button>
+    <div class="err" id="err"></div>
+  </form>
+</section>
+
+<!-- 2. waiting in lobby / between questions -->
+<section id="s-wait" class="screen center">
+  <div class="big pop">✔</div>
+  <h1 id="waitTitle">You're in!</h1>
+  <div class="muted" id="waitMsg">Look for your name on the big screen.</div>
+  <div class="spin" style="margin-top:12px"></div>
+</section>
+
+<!-- 3. question -->
+<section id="s-q" class="screen">
+  <div class="qhead"><span id="qNum"></span><span class="t" id="qTime"></span></div>
+  <div class="qtext" id="qText"></div>
+  <div class="answers" id="answers"></div>
+</section>
+
+<!-- 4. answered, waiting for reveal -->
+<section id="s-sent" class="screen center">
+  <div class="spin"></div>
+  <h2>Answer locked in</h2>
+  <div class="muted">Waiting for everyone else…</div>
+</section>
+
+<!-- 5. result -->
+<section id="s-result" class="screen center">
+  <div class="big pop" id="rIcon"></div>
+  <h1 id="rTitle"></h1>
+  <div class="pts" id="rPts"></div>
+  <div class="pill" id="rStreak" hidden></div>
+  <div class="pill" id="rRank"></div>
+</section>
+
+<!-- 6. final -->
+<section id="s-final" class="screen center">
+  <div class="big pop" id="fIcon">🏁</div>
+  <h1 id="fRank"></h1>
+  <div class="pts" id="fScore"></div>
+  <div class="muted">Thanks for playing! Check the big screen for the winners.</div>
+</section>
+
+<!-- 7. message (kicked / ended / errors) -->
+<section id="s-msg" class="screen center">
+  <h2 id="mText"></h2>
+  <button class="btn ghost" onclick="resetSession()">Join again</button>
+</section>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/common.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const socket = io({ transports: ['websocket', 'polling'] });
+const KEY = 'eq-session';
+let session = null, tick = null, score = 0;
+try { session = JSON.parse(sessionStorage.getItem(KEY) || localStorage.getItem(KEY) || 'null'); } catch {}
+
+const show = (id) => { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); window.scrollTo(0, 0); };
+const setScore = (s) => { score = s; $('tScore').textContent = s.toLocaleString(); };
+const ord = (n) => n + (['th','st','nd','rd'][(n % 100 - 20) % 10] || ['th','st','nd','rd'][n % 100] || 'th');
+const buzz = (ms) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
+function save(s) { session = s; try { const v = JSON.stringify(s); sessionStorage.setItem(KEY, v); localStorage.setItem(KEY, v); } catch {} }
+function resetSession() { try { sessionStorage.removeItem(KEY); localStorage.removeItem(KEY); } catch {} session = null; $('top').hidden = true; show('s-join'); }
+function enterGame(name, title) {
+  $('tName').textContent = name; $('top').hidden = false;
+  if (title) document.title = title;
+}
+
+// Prefill PIN from the QR link, remember contact details on this phone
+const qsPin = new URLSearchParams(location.search).get('pin');
+if (qsPin) $('pin').value = qsPin.replace(/\D/g, '').slice(0, 6);
+try { const d = JSON.parse(localStorage.getItem('eq-contact') || '{}');
+  ['name','email','phone','linkedin'].forEach(k => d[k] && ($(k).value = d[k])); } catch {}
+
+$('joinForm').addEventListener('submit', (e) => {
+  e.preventDefault(); $('err').textContent = '';
+  const d = { pin: $('pin').value.trim(), name: $('name').value.trim(), email: $('email').value.trim(),
+    phone: $('phone').value.trim(), linkedin: $('linkedin').value.trim(), consent: $('consent').checked };
+  if (!/^\d{6}$/.test(d.pin)) return $('err').textContent = 'Enter the 6-digit PIN from the big screen';
+  $('joinBtn').disabled = true;
+  socket.emit('player:join', d, (r) => {
+    $('joinBtn').disabled = false;
+    if (r.error) return $('err').textContent = r.error;
+    try { localStorage.setItem('eq-contact', JSON.stringify({ name: d.name, email: d.email, phone: d.phone, linkedin: d.linkedin })); } catch {}
+    save({ pin: d.pin, playerId: r.playerId });
+    enterGame(r.name, r.title); setScore(0);
+    $('waitTitle').textContent = "You're in!"; $('waitMsg').textContent = 'Look for your name on the big screen.';
+    show('s-wait'); buzz(60);
+  });
+});
+
+// Reconnect (Wi-Fi blip, phone locked, page refreshed)
+socket.on('connect', () => {
+  if (!session) return;
+  socket.emit('player:rejoin', session, (r) => {
+    if (r.error) { if (!$('s-join').classList.contains('on')) { $('mText').textContent = 'Your session expired. Check in again to keep playing.'; show('s-msg'); } resetSessionSilently(); return; }
+    enterGame(r.name, r.title); setScore(r.score);
+    if (r.phase === 'final') { $('fRank').textContent = 'Game over'; $('fScore').textContent = r.score.toLocaleString() + ' pts'; show('s-final'); }
+    else if (r.phase !== 'question') { $('waitTitle').textContent = 'Back in the game'; $('waitMsg').textContent = 'Next question coming up…'; show('s-wait'); }
+    // phase 'question': server resends it right after this
+  });
+});
+function resetSessionSilently() { try { sessionStorage.removeItem(KEY); localStorage.removeItem(KEY); } catch {} session = null; }
+
+socket.on('question', (q) => {
+  clearInterval(tick);
+  $('qNum').textContent = `Question ${q.index + 1} of ${q.total}`;
+  $('qText').textContent = q.q;
+  const box = $('answers'); box.className = 'answers' + (q.count === 2 ? ' n2' : '');
+  box.innerHTML = q.answers.map((a, i) =>
+    `<button class="ans" data-i="${i}" style="background:${COLORS[i]}">${SHAPES[i]}<span>${esc(a)}</span></button>`).join('');
+  let left = q.time; $('qTime').textContent = left;
+  tick = setInterval(() => { left = Math.max(0, left - 1); $('qTime').textContent = left; if (!left) clearInterval(tick); }, 1000);
+  show('s-q'); buzz(40);
+});
+
+$('answers').addEventListener('click', (e) => {
+  const b = e.target.closest('.ans'); if (!b) return;
+  $('answers').classList.add('locked'); buzz(30);
+  socket.emit('player:answer', { choice: +b.dataset.i }, (r) => {
+    $('answers').classList.remove('locked');
+    if (r && r.error) return;            // too late; reveal arrives shortly
+    clearInterval(tick); show('s-sent');
+  });
+});
+
+socket.on('result', (r) => {
+  clearInterval(tick); setScore(r.score);
+  const el = $('s-result'); el.classList.toggle('good', r.correct); el.classList.toggle('bad', !r.correct);
+  $('rIcon').textContent = r.correct ? '✔' : (r.answered ? '✖' : '⌛');
+  $('rTitle').textContent = r.correct ? 'Correct!' : (r.answered ? 'Not quite' : "Time's up");
+  $('rPts').textContent = r.correct ? '+' + r.points.toLocaleString() : '+0';
+  $('rStreak').hidden = !(r.correct && r.streak > 1);
+  $('rStreak').textContent = `🔥 Answer streak: ${r.streak}`;
+  $('rRank').textContent = `You're in ${ord(r.rank)} place of ${r.of}`;
+  // re-trigger the pop animation
+  $('rIcon').classList.remove('pop'); void $('rIcon').offsetWidth; $('rIcon').classList.add('pop');
+  show('s-result'); buzz(r.correct ? [60, 40, 60] : 200);
+});
+
+socket.on('final', (f) => {
+  clearInterval(tick); setScore(f.score);
+  $('fIcon').textContent = ['🏆', '🥈', '🥉'][f.rank - 1] || '🏁';
+  $('fRank').textContent = `You finished ${ord(f.rank)} of ${f.of}`;
+  $('fScore').textContent = f.score.toLocaleString() + ' pts';
+  show('s-final'); resetSessionSilently();
+});
+
+socket.on('kicked', () => { $('mText').textContent = 'The host removed you from this game.'; resetSessionSilently(); show('s-msg'); });
+</script>
+</body>
+</html>

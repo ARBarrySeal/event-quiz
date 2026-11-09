@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Event Quiz · Host</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  body { overflow: hidden; }
+  .screen { display: none; height: 100vh; flex-direction: column; padding: 2.5vh 3vw; gap: 2vh; }
+  .screen.on { display: flex; }
+  .center { align-items: center; justify-content: center; text-align: center; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 28px; width: min(440px, 92vw); display: grid; gap: 14px; }
+  /* lobby */
+  .lobby-top { display: flex; gap: 4vw; align-items: center; justify-content: center; }
+  .qr { background: #fff; padding: 12px; border-radius: 16px; width: 30vh; height: 30vh; }
+  .pinbox { text-align: left; }
+  .pinbox .lbl { font-size: 2.4vh; color: var(--muted); }
+  .pin { font: 800 14vh/1 var(--mono); letter-spacing: .05em; color: var(--accent); }
+  .url { font: 2.2vh var(--mono); color: var(--muted); }
+  .names { flex: 1; display: flex; flex-wrap: wrap; gap: 10px; align-content: flex-start; justify-content: center; overflow: hidden; }
+  .names span { background: var(--panel); border: 1px solid var(--line); padding: 8px 16px; border-radius: 999px; font-size: 2.4vh; animation: pop .25s ease-out; }
+  @keyframes pop { from { transform: scale(.6); opacity: 0 } }
+  .bar { display: flex; justify-content: space-between; align-items: center; font-size: 2.6vh; }
+  /* question */
+  .qtext { font-size: 5vh; font-weight: 700; text-align: center; background: var(--panel); border-radius: 16px; padding: 3vh 3vw; }
+  .mid { flex: 1; display: flex; align-items: center; justify-content: space-between; }
+  .timer { width: 18vh; height: 18vh; border-radius: 50%; display: grid; place-items: center; font: 800 8vh var(--mono); background: var(--accent); color: #000; }
+  .count { text-align: center; font-size: 3vh; } .count b { display: block; font-size: 8vh; }
+  .chart { display: flex; gap: 2vw; align-items: flex-end; height: 26vh; }
+  .col { width: 9vw; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; font: 700 3.4vh var(--mono); }
+  .col i { display: block; width: 100%; border-radius: 8px 8px 0 0; min-height: 6px; transition: height .6s; }
+  .col.wrong { opacity: .3; }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6vh; }
+  .tile { border-radius: 12px; padding: 2.6vh 2vw; font-size: 3.6vh; font-weight: 700; display: flex; align-items: center; gap: 1.6vw; color: #fff; }
+  .tile.dim { opacity: .25; } .tile.right::after { content: "✔"; margin-left: auto; }
+  /* leaderboard / podium */
+  .board { width: min(900px, 90vw); display: grid; gap: 1.4vh; }
+  .row { display: flex; justify-content: space-between; background: var(--panel); border-radius: 12px; padding: 2vh 2vw; font-size: 3.6vh; font-weight: 700; animation: pop .3s ease-out backwards; }
+  .row:first-child { background: var(--accent); color: #000; }
+  .row b { font-family: var(--mono); }
+  .podium { display: flex; align-items: flex-end; gap: 2vw; height: 50vh; }
+  .step { width: 20vw; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; animation: rise .8s ease-out backwards; }
+  .step div { width: 100%; border-radius: 12px 12px 0 0; display: grid; place-items: center; font: 800 8vh var(--mono); color: #000; }
+  .step .nm { font-size: 4vh; font-weight: 800; } .step .sc { font: 2.8vh var(--mono); color: var(--muted); margin-bottom: 1vh; }
+  @keyframes rise { from { transform: translateY(40vh); opacity: 0 } }
+  h1.title { font-size: 6vh; margin: 0; }
+</style>
+</head>
+<body>
+
+<!-- 1. login -->
+<section id="s-login" class="screen on center">
+  <div class="card">
+    <h2 style="margin:0">Host a game</h2>
+    <input id="key" type="password" placeholder="Host password" autocomplete="current-password">
+    <button class="btn" id="loadEvents">Unlock</button>
+    <select id="event" hidden></select>
+    <button class="btn" id="create" hidden>Create game</button>
+    <div id="err" class="err"></div>
+    <a href="/editor.html" style="color:var(--muted);font-size:14px">Edit questions</a>
+  </div>
+</section>
+
+<!-- 2. lobby -->
+<section id="s-lobby" class="screen">
+  <h1 class="title center" id="lobbyTitle" style="display:flex"></h1>
+  <div class="lobby-top">
+    <img class="qr" id="qr" alt="Scan to join">
+    <div class="pinbox">
+      <div class="lbl">Scan the code, or go to</div>
+      <div class="url" id="joinUrl"></div>
+      <div class="lbl" style="margin-top:2vh">Game PIN</div>
+      <div class="pin" id="pin"></div>
+    </div>
+  </div>
+  <div class="names" id="names"></div>
+  <div class="bar"><span><b id="pcount">0</b> players</span><button class="btn" id="start">Start ▶</button></div>
+</section>
+
+<!-- 3. question / reveal -->
+<section id="s-q" class="screen">
+  <div class="bar"><span id="qnum"></span><button class="btn ghost" id="skip">Skip ⏭</button></div>
+  <div class="qtext" id="qtext"></div>
+  <div class="mid">
+    <div class="timer" id="timer"></div>
+    <div class="chart" id="chart"></div>
+    <div class="count"><b id="acount">0</b>answers</div>
+  </div>
+  <div class="tiles" id="tiles"></div>
+</section>
+
+<!-- 4. leaderboard -->
+<section id="s-board" class="screen center">
+  <h1 class="title">Scoreboard</h1>
+  <div class="board" id="board"></div>
+  <button class="btn" id="next">Next ▶</button>
+</section>
+
+<!-- 5. final -->
+<section id="s-final" class="screen center">
+  <h1 class="title" id="finalTitle">Winners</h1>
+  <div class="podium" id="podium"></div>
+  <div style="display:flex;gap:16px">
+    <a class="btn ghost" id="csv" href="#">Download check-ins (CSV)</a>
+    <button class="btn ghost" id="again">New game</button>
+  </div>
+</section>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/common.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const socket = io();
+let key = '', pin = '', total = 0, current = null, timerInt = null, lastReveal = null;
+const show = (id) => document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id));
+const store = (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch {} };
+const load = (k) => { try { return sessionStorage.getItem(k); } catch { return null; } };
+
+// ---- login ----
+$('loadEvents').onclick = async () => {
+  key = $('key').value; $('err').textContent = '';
+  const r = await fetch('/api/events', { headers: { 'x-host-key': key } });
+  if (!r.ok) return $('err').textContent = 'Wrong password';
+  const evs = await r.json();
+  $('event').innerHTML = evs.map(e => `<option value="${e.id}">${esc(e.title)} (${e.questions} Qs) - ${e.id}</option>`).join('');
+  $('event').hidden = $('create').hidden = false; $('loadEvents').hidden = $('key').hidden = true;
+};
+$('key').onkeydown = (e) => e.key === 'Enter' && $('loadEvents').click();
+$('create').onclick = () => socket.emit('host:create', { key, eventId: $('event').value }, (r) => {
+  if (r.error) return $('err').textContent = r.error;
+  enterLobby(r);
+});
+function enterLobby(r) {
+  pin = r.pin; total = r.total; store('hostKey', key); store('hostPin', pin);
+  $('lobbyTitle').textContent = r.title; $('pin').textContent = pin.replace(/(\d{3})(\d{3})/, '$1 $2');
+  $('qr').src = `/api/qr/${pin}.png`; $('joinUrl').textContent = `${location.host}/play.html?pin=${pin}`;
+  $('csv').href = `/api/registrations.csv?key=${encodeURIComponent(key)}`;
+  show('s-lobby');
+}
+// survive a refresh mid-game
+const savedPin = load('hostPin');
+if (savedPin) socket.emit('host:rejoin', { key: load('hostKey'), pin: savedPin }, (r) => {
+  if (r.error) return store('hostPin', null);
+  key = load('hostKey'); enterLobby(r);
+  if (r.phase !== 'lobby') $('lobbyTitle').textContent += ' — press Start to resume';
+});
+
+// ---- lobby ----
+socket.on('lobby', ({ count, names }) => {
+  $('pcount').textContent = count;
+  $('names').innerHTML = names.map(n => `<span>${esc(n)}</span>`).join('');
+});
+$('start').onclick = () => socket.emit('host:next');
+
+// ---- question ----
+socket.on('question', (q) => {
+  current = q; lastReveal = null;
+  $('qnum').textContent = `Question ${q.index + 1} of ${q.total}`;
+  $('qtext').textContent = q.q; $('acount').textContent = 0; $('chart').innerHTML = '';
+  $('timer').style.visibility = ''; $('skip').textContent = 'Skip ⏭';
+  $('tiles').innerHTML = q.answers.map((a, i) =>
+    `<div class="tile" style="background:${COLORS[i]}">${SHAPES[i]}<span>${esc(a)}</span></div>`).join('');
+  let left = q.time; $('timer').textContent = left;
+  clearInterval(timerInt);
+  timerInt = setInterval(() => { left = Math.max(0, left - 1); $('timer').textContent = left; if (!left) clearInterval(timerInt); }, 1000);
+  show('s-q');
+});
+socket.on('answered', ({ answered }) => $('acount').textContent = answered);
+socket.on('reveal', (r) => {
+  clearInterval(timerInt); lastReveal = r;
+  $('timer').style.visibility = 'hidden'; $('acount').textContent = r.answered;
+  const max = Math.max(1, ...r.counts);
+  $('chart').innerHTML = r.counts.map((c, i) =>
+    `<div class="col ${i === r.correct ? '' : 'wrong'}">${c}<i style="background:${COLORS[i]};height:0"></i></div>`).join('');
+  requestAnimationFrame(() => [...$('chart').querySelectorAll('i')].forEach((el, i) => el.style.height = (r.counts[i] / max * 85) + '%'));
+  [...$('tiles').children].forEach((t, i) => t.classList.add(i === r.correct ? 'right' : 'dim'));
+  $('skip').textContent = 'Scoreboard ▶';
+});
+$('skip').onclick = () => {
+  if (!lastReveal) return socket.emit('host:next');           // ends question early
+  $('board').innerHTML = lastReveal.leaderboard.map((p, i) =>
+    `<div class="row" style="animation-delay:${i * .08}s"><span>${i + 1}. ${esc(p.name)}</span><b>${p.score}</b></div>`).join('');
+  $('next').textContent = lastReveal.last ? 'Final results 🏆' : 'Next question ▶';
+  show('s-board');
+};
+$('next').onclick = () => socket.emit('host:next');
+
+// ---- final ----
+socket.on('final', ({ podium }) => {
+  const order = [1, 0, 2], h = ['30vh', '40vh', '22vh'], col = ['#c0c0c0', 'var(--accent)', '#cd7f32'];
+  $('podium').innerHTML = order.filter(i => podium[i]).map((i, k) =>
+    `<div class="step" style="animation-delay:${[.6, 1.2, 0][k]}s"><span class="nm">${esc(podium[i].name)}</span>
+     <span class="sc">${podium[i].score} pts</span><div style="height:${h[k]};background:${col[k]}">${i + 1}</div></div>`).join('');
+  store('hostPin', null); show('s-final');
+});
+$('again').onclick = () => { store('hostPin', null); location.reload(); };
+</script>
+</body>
+</html>

@@ -7,6 +7,7 @@ const path = require('path');
 const crypto = require('crypto');
 const QRCode = require('qrcode');
 const { Server } = require('socket.io');
+const { createLeadSync } = require('./leads');
 
 const PORT = process.env.PORT || 8080;
 const HOST_KEY = process.env.HOST_KEY || 'changeme';          // host/admin password
@@ -14,14 +15,15 @@ if (process.env.K_SERVICE && (!process.env.HOST_KEY || HOST_KEY.length < 12)) {
   console.error('Set HOST_KEY (12+ chars) before running on Cloud Run'); process.exit(1);
 }
 const PUBLIC_URL = process.env.PUBLIC_URL || '';                // e.g. https://quiz-xyz.run.app
-const EVENTS_DIR = path.join(__dirname, 'events');
+const EVENTS_DIR = process.env.EVENTS_DIR || path.join(__dirname, 'events');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
+const leads = createLeadSync({ dataDir: DATA_DIR });
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { pingInterval: 10000, pingTimeout: 20000 });
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- helpers ----------
@@ -33,27 +35,68 @@ const isHost = (key) => typeof key === 'string' && key.length === HOST_KEY.lengt
   crypto.timingSafeEqual(Buffer.from(key), Buffer.from(HOST_KEY));
 
 function listEvents() {
-  return fs.readdirSync(EVENTS_DIR).filter(f => f.endsWith('.json')).map(f => {
-    const e = JSON.parse(fs.readFileSync(path.join(EVENTS_DIR, f), 'utf8'));
-    return { id: f.replace(/\.json$/, ''), title: e.title, questions: e.questions.length };
+  return fs.readdirSync(EVENTS_DIR).filter(f => f.endsWith('.json')).flatMap(f => {
+    try {
+      const e = JSON.parse(fs.readFileSync(path.join(EVENTS_DIR, f), 'utf8'));
+      return [{ id: f.replace(/\.json$/, ''), title: e.title, questions: e.questions?.length || 0 }];
+    } catch { return []; }   // one broken file shouldn't hide the rest
   });
 }
-function loadEvent(id) {
-  if (!/^[\w-]+$/.test(id)) throw new Error('bad event id');
-  const e = JSON.parse(fs.readFileSync(path.join(EVENTS_DIR, id + '.json'), 'utf8'));
-  e.questions.forEach((q, i) => {
-    if (!q.q || !Array.isArray(q.answers) || q.answers.length < 2 || q.answers.length > 4 ||
-        !(q.correct >= 0 && q.correct < q.answers.length)) throw new Error(`question ${i + 1} is malformed`);
+// Throws a readable error if an event file is unusable. Returns a cleaned copy.
+function validateEvent(e) {
+  if (!e || typeof e !== 'object') throw new Error('event must be an object');
+  const title = clean(e.title, 80);
+  if (!title) throw new Error('title is required');
+  const tpq = Number(e.timePerQuestion) || 20;
+  if (tpq < 5 || tpq > 120) throw new Error('time per question must be 5-120 seconds');
+  if (!Array.isArray(e.questions) || !e.questions.length) throw new Error('add at least one question');
+  if (e.questions.length > 200) throw new Error('200 questions max');
+  const questions = e.questions.map((q, i) => {
+    const n = `question ${i + 1}`;
+    const text = clean(q?.q, 300);
+    if (!text) throw new Error(`${n} has no text`);
+    if (!Array.isArray(q.answers)) throw new Error(`${n} has no answers`);
+    const answers = q.answers.map(a => clean(a, 80));
+    if (answers.length < 2 || answers.length > 4) throw new Error(`${n} needs 2-4 answers`);
+    if (answers.some(a => !a)) throw new Error(`${n} has a blank answer`);
+    if (!(Number.isInteger(q.correct) && q.correct >= 0 && q.correct < answers.length)) throw new Error(`${n} has no correct answer marked`);
+    const out = { q: text, answers, correct: q.correct };
+    if (q.time != null && q.time !== '') {
+      const t = Number(q.time);
+      if (!(t >= 5 && t <= 120)) throw new Error(`${n} time must be 5-120 seconds`);
+      out.time = t;
+    }
+    return out;
   });
-  return e;
+  const out = { title, timePerQuestion: tpq, questions };
+  if (clean(e.subtitle, 120)) out.subtitle = clean(e.subtitle, 120);
+  return out;
+}
+const eventPath = (id) => {
+  if (typeof id !== 'string' || !/^[\w-]{1,60}$/.test(id)) throw new Error('bad event id');
+  return path.join(EVENTS_DIR, id + '.json');
+};
+function loadEvent(id) {
+  try { return validateEvent(JSON.parse(fs.readFileSync(eventPath(id), 'utf8'))); }
+  catch (e) { throw new Error(e.code === 'ENOENT' ? 'event not found' : e.message); }
+}
+function saveEvent(id, e) {
+  const file = eventPath(id), tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(e, null, 2) + '\n');
+  fs.renameSync(tmp, file);   // atomic: a crash mid-save never leaves a half-written file
 }
 const leaderboard = (g, n = 5) => [...g.players.values()]
   .sort((a, b) => b.score - a.score).slice(0, n).map(p => ({ name: p.name, score: p.score }));
 
+let regWrites = Promise.resolve();
 function saveRegistration(g, p) {
   const row = { pin: g.pin, event: g.eventId, time: new Date().toISOString(),
     name: p.name, email: p.email, phone: p.phone, linkedin: p.linkedin, consent: p.consent };
-  fs.appendFileSync(path.join(DATA_DIR, 'registrations.jsonl'), JSON.stringify(row) + '\n');
+  // Serialized async write: on Cloud Run DATA_DIR is a Cloud Storage mount where each
+  // append takes ~100ms+, so a blocking write would freeze the game during a check-in rush.
+  regWrites = regWrites.then(() => fs.promises.appendFile(path.join(DATA_DIR, 'registrations.jsonl'), JSON.stringify(row) + '\n'))
+    .catch(e => console.error('registration write failed:', e.message, JSON.stringify(row)));
+  leads.push({ ...row, eventTitle: g.event.title });
 }
 
 // ---------- game flow ----------
@@ -153,6 +196,13 @@ io.on('connection', (socket) => {
     socket.join(p.id); socket.join(g.pin + ':players');
     socket.data.pin = g.pin; socket.data.pid = p.id;
     cb({ name: p.name, score: p.score, title: g.event.title, phase: g.phase });
+    // Phone dropped mid-question: resend it with the time that's left
+    if (g.phase === 'question' && !g.answers.has(p.id)) {
+      const q = g.event.questions[g.qIndex];
+      const total = q.time || g.event.timePerQuestion || 20;
+      const left = Math.max(1, Math.round(total - (Date.now() - g.qStart) / 1000));
+      socket.emit('question', { index: g.qIndex, total: g.event.questions.length, count: q.answers.length, time: left, q: q.q, answers: q.answers });
+    }
   });
   socket.on('player:answer', ({ choice } = {}, cb = () => {}) => {
     const g = games.get(socket.data.pin); const p = g?.players.get(socket.data.pid);
@@ -175,19 +225,37 @@ io.on('connection', (socket) => {
 
 // ---------- HTTP API ----------
 app.get('/api/events', (req, res) => isHost(req.get('x-host-key')) ? res.json(listEvents()) : res.sendStatus(401));
+const hostOnly = (req, res, next) => isHost(req.get('x-host-key')) ? next() : res.sendStatus(401);
+app.get('/api/events/:id', hostOnly, (req, res) => {
+  try { res.json(JSON.parse(fs.readFileSync(eventPath(req.params.id), 'utf8'))); }
+  catch (e) { res.status(e.code === 'ENOENT' ? 404 : 400).json({ error: e.code === 'ENOENT' ? 'event not found' : e.message }); }
+});
+// Save an event. ?create=1 refuses to overwrite an existing file.
+app.put('/api/events/:id', hostOnly, (req, res) => {
+  try {
+    const file = eventPath(req.params.id);
+    if (req.query.create && fs.existsSync(file)) return res.status(409).json({ error: 'an event with that id already exists' });
+    const e = validateEvent(req.body);
+    saveEvent(req.params.id, e);
+    res.json({ ok: true, id: req.params.id, questions: e.questions.length });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
 app.get('/api/qr/:pin.png', async (req, res) => {
   const url = `${baseUrl(req)}/play.html?pin=${encodeURIComponent(req.params.pin)}`;
   res.type('png').send(await QRCode.toBuffer(url, { width: 600, margin: 1 }));
 });
-app.get('/api/registrations.csv', (req, res) => {
+app.get('/api/registrations.csv', async (req, res) => {
   if (!isHost(req.query.key)) return res.sendStatus(401);
+  await regWrites;   // include check-ins still being written
   const f = path.join(DATA_DIR, 'registrations.jsonl');
   const rows = fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : [];
   const cols = ['time', 'event', 'pin', 'name', 'email', 'phone', 'linkedin', 'consent'];
-  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  // quote every cell; prefix ' so Excel won't run a formula a player typed into the form
+  const esc = (v) => { const t = String(v ?? ''); return `"${(/^[=+\-@\t\r]/.test(t) ? "'" + t : t).replace(/"/g, '""')}"`; };
   res.type('text/csv').attachment('registrations.csv')
     .send([cols.join(','), ...rows.map(r => cols.map(c => esc(r[c])).join(','))].join('\n'));
 });
+app.get('/api/leads/status', hostOnly, (_, res) => res.json({ enabled: leads.enabled, ...leads.stats }));
 app.get('/healthz', (_, res) => res.send('ok'));
 
-server.listen(PORT, () => console.log(`Event Quiz on :${PORT}`));
+server.listen(PORT, () => console.log(`Event Quiz on :${PORT} (HubSpot ${leads.enabled.hubspot ? 'on' : 'off'}, Sheet ${leads.enabled.sheet ? 'on' : 'off'})`));

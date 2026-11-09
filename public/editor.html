@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Event Quiz · Editor</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  body { padding: 24px 16px 120px; }
+  [hidden] { display: none !important; }
+  .wrap { max-width: 900px; width: 100%; margin: 0 auto; display: grid; gap: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 12px; }
+  h1 { margin: 0; font-size: 26px; } h2 { margin: 0; font-size: 18px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .row > * { flex: 1 1 160px; }
+  .row > .btn, .row > .small { flex: 0 0 auto; }
+  label.f { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+  .btn.small { padding: 8px 14px; font-size: 14px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  textarea { width: 100%; min-height: 64px; padding: 12px; border-radius: 10px; border: 1px solid var(--line); background: #0e1311; color: var(--text); font: 16px system-ui, sans-serif; resize: vertical; }
+  .q { border-left: 4px solid var(--line); }
+  .q.bad { border-left-color: #ff6b6b; }
+  .qhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .qhead b { font-family: var(--mono); color: var(--accent); }
+  .ans { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .a { display: flex; align-items: center; gap: 8px; border-radius: 10px; padding: 6px 8px; }
+  .a input[type=text] { padding: 10px; background: rgba(0,0,0,.35); border-color: transparent; color: #fff; }
+  .a input[type=radio] { width: 22px; height: 22px; flex: none; accent-color: #fff; }
+  .a.right { outline: 3px solid #fff; }
+  .tools { display: flex; gap: 6px; flex-wrap: wrap; }
+  .save { position: fixed; left: 0; right: 0; bottom: 0; background: #0b0f0dee; border-top: 1px solid var(--line); padding: 12px 16px; }
+  .save .inner { max-width: 900px; margin: 0 auto; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .ok { color: var(--accent); }
+  code { font-family: var(--mono); font-size: 13px; background: #0e1311; padding: 2px 6px; border-radius: 6px; }
+  details summary { cursor: pointer; }
+  @media (max-width: 600px) { .ans { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- login -->
+  <div class="card" id="login">
+    <h1>Question editor</h1>
+    <input id="key" type="password" placeholder="Host password" autocomplete="current-password">
+    <button class="btn" id="unlock">Unlock</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+
+  <!-- pick -->
+  <div class="card" id="pick" hidden>
+    <div class="row"><h1>Question editor</h1><a class="btn ghost small" href="/host.html">Go to host screen</a></div>
+    <label class="f">Open an event<select id="eventList"></select></label>
+    <div class="row"><button class="btn" id="open">Open</button><button class="btn ghost" id="newEv">+ New event</button></div>
+    <div class="err" id="pickErr"></div>
+  </div>
+
+  <!-- edit -->
+  <div id="editor" hidden class="wrap" style="max-width:none">
+    <div class="card">
+      <div class="row"><h1 id="edTitle">Event</h1><button class="btn ghost small" id="back">← All events</button></div>
+      <label class="f">Event file name (letters, numbers, dashes)<input id="evId" placeholder="sdmac-mixer-2027"></label>
+      <label class="f">Title (shown on the big screen)<input id="title" maxlength="80"></label>
+      <label class="f">Subtitle (optional)<input id="subtitle" maxlength="120"></label>
+      <label class="f">Seconds per question (5-120)<input id="tpq" type="number" min="5" max="120" value="20"></label>
+      <p class="muted" style="margin:0">Files named <code>sample-…</code> are published to the public GitHub repo. Every other file stays private, so players can't look up the answers.</p>
+    </div>
+
+    <div class="card">
+      <h2>Import questions</h2>
+      <p class="muted" style="margin:0">Paste rows from Excel or Google Sheets, or a CSV. One question per row:
+        <code>question, answer A, answer B, answer C, answer D, correct, seconds</code>.
+        Correct can be <code>A</code>-<code>D</code>, <code>1</code>-<code>4</code>, or the answer text. Answers C and D, and seconds, are optional. A header row is skipped.</p>
+      <textarea id="paste" placeholder="Which port does SSH use?	21	22	23	443	B"></textarea>
+      <div class="row">
+        <label class="btn ghost small" style="cursor:pointer">Choose CSV / JSON file<input type="file" id="file" accept=".csv,.tsv,.txt,.json" hidden></label>
+        <button class="btn small" id="importAdd">Add to end</button>
+        <button class="btn ghost small" id="importReplace">Replace all</button>
+        <a class="btn ghost small" id="template" href="#">Download blank template</a>
+      </div>
+      <div id="importMsg" class="muted"></div>
+    </div>
+
+    <div id="qs" class="wrap" style="max-width:none"></div>
+    <button class="btn ghost" id="addQ">+ Add question</button>
+  </div>
+</div>
+
+<div class="save" id="saveBar" hidden>
+  <div class="inner">
+    <span id="status" class="muted"></span>
+    <span class="tools">
+      <button class="btn ghost small" id="exportCsv">Export CSV</button>
+      <button class="btn small" id="save">Save</button>
+    </span>
+  </div>
+</div>
+
+<script src="/common.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const LETTERS = 'ABCD';
+let key = '', ev = null, evId = '', isNew = false, dirty = false;
+
+const api = async (url, opts = {}) => {
+  const r = await fetch(url, { ...opts, headers: { 'x-host-key': key, 'content-type': 'application/json', ...(opts.headers || {}) } });
+  const body = r.headers.get('content-type')?.includes('json') ? await r.json() : null;
+  if (!r.ok) throw new Error(body?.error || (r.status === 401 ? 'Wrong password' : 'Error ' + r.status));
+  return body;
+};
+const setDirty = (d = true) => { dirty = d; $('status').className = d ? 'muted' : 'ok'; if (d) $('status').textContent = 'Unsaved changes'; };
+window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+// ---------- login / pick ----------
+$('unlock').onclick = async () => {
+  key = $('key').value; $('loginErr').textContent = '';
+  try { await refreshList(); try { sessionStorage.setItem('hostKey', key); } catch {} $('login').hidden = true; $('pick').hidden = false; }
+  catch (e) { $('loginErr').textContent = e.message; }
+};
+$('key').onkeydown = (e) => e.key === 'Enter' && $('unlock').click();
+try { const k = sessionStorage.getItem('hostKey'); if (k) { $('key').value = k; $('unlock').click(); } } catch {}
+
+async function refreshList() {
+  const evs = await api('/api/events');
+  $('eventList').innerHTML = evs.map(e => `<option value="${esc(e.id)}">${esc(e.title || e.id)} (${e.questions} Qs) - ${esc(e.id)}</option>`).join('');
+  $('open').disabled = !evs.length;
+}
+$('open').onclick = async () => {
+  $('pickErr').textContent = '';
+  try { const id = $('eventList').value; openEditor(await api('/api/events/' + encodeURIComponent(id)), id, false); }
+  catch (e) { $('pickErr').textContent = e.message; }
+};
+$('newEv').onclick = () => openEditor({ title: '', subtitle: '', timePerQuestion: 20, questions: [blankQ()] }, '', true);
+$('back').onclick = async () => {
+  if (dirty && !confirm('Leave without saving?')) return;
+  setDirty(false); $('editor').hidden = $('saveBar').hidden = true; $('pick').hidden = false; await refreshList();
+};
+
+function openEditor(data, id, fresh) {
+  ev = { title: data.title || '', subtitle: data.subtitle || '', timePerQuestion: data.timePerQuestion || 20,
+    questions: (data.questions || []).map(q => ({ q: q.q || '', answers: [...(q.answers || [])], correct: q.correct ?? 0, time: q.time ?? '' })) };
+  evId = id; isNew = fresh;
+  $('evId').value = id; $('evId').disabled = !fresh;
+  $('title').value = ev.title; $('subtitle').value = ev.subtitle; $('tpq').value = ev.timePerQuestion;
+  $('pick').hidden = true; $('editor').hidden = $('saveBar').hidden = false;
+  $('importMsg').textContent = ''; $('status').textContent = fresh ? 'New event - not saved yet' : 'Saved'; $('status').className = fresh ? 'muted' : 'ok';
+  dirty = fresh; render();
+}
+const blankQ = () => ({ q: '', answers: ['', '', '', ''], correct: 0, time: '' });
+
+// ---------- event fields ----------
+$('title').oninput = (e) => { ev.title = e.target.value; $('edTitle').textContent = ev.title || 'Event'; setDirty(); };
+$('subtitle').oninput = (e) => { ev.subtitle = e.target.value; setDirty(); };
+$('tpq').oninput = (e) => { ev.timePerQuestion = +e.target.value; setDirty(); };
+$('evId').oninput = (e) => { e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9_-]+/g, '-'); setDirty(); };
+
+// ---------- question list ----------
+function problem(q) {
+  if (!q.q.trim()) return 'needs question text';
+  const filled = q.answers.filter(a => a.trim());
+  if (filled.length < 2) return 'needs at least 2 answers';
+  if (q.answers.slice(0, filled.length).some(a => !a.trim())) return 'fill answers in order (no gaps)';
+  if (!q.answers[q.correct]?.trim()) return 'mark which answer is correct';
+  if (q.time !== '' && !(+q.time >= 5 && +q.time <= 120)) return 'seconds must be 5-120';
+  return '';
+}
+function render() {
+  $('edTitle').textContent = ev.title || 'Event';
+  $('qs').innerHTML = ev.questions.map((q, i) => {
+    const bad = problem(q);
+    return `<div class="card q ${bad ? 'bad' : ''}" data-i="${i}">
+      <div class="qhead"><span><b>Q${i + 1}</b> <span class="err" style="font-size:13px">${bad ? '· ' + esc(bad) : ''}</span></span>
+        <span class="tools">
+          <button class="btn ghost small" data-act="up" ${i ? '' : 'disabled'} title="Move up">↑</button>
+          <button class="btn ghost small" data-act="down" ${i < ev.questions.length - 1 ? '' : 'disabled'} title="Move down">↓</button>
+          <button class="btn ghost small" data-act="dup" title="Duplicate">⧉</button>
+          <button class="btn ghost small" data-act="del" title="Delete">✕</button>
+        </span></div>
+      <textarea data-f="q" maxlength="300" placeholder="Question text">${esc(q.q)}</textarea>
+      <div class="ans">${[0, 1, 2, 3].map(j => `
+        <label class="a ${q.correct === j && q.answers[j]?.trim() ? 'right' : ''}" style="background:${COLORS[j]}">
+          <input type="radio" name="c${i}" data-f="correct" value="${j}" ${q.correct === j ? 'checked' : ''} title="Correct answer">
+          ${SHAPES[j]}
+          <input type="text" data-f="a" data-j="${j}" maxlength="80" value="${esc(q.answers[j] || '')}" placeholder="Answer ${LETTERS[j]}${j > 1 ? ' (optional)' : ''}">
+        </label>`).join('')}</div>
+      <label class="f" style="max-width:220px">Seconds (blank = event default)<input type="number" min="5" max="120" data-f="time" value="${esc(q.time)}"></label>
+    </div>`;
+  }).join('');
+  $('status').title = '';
+}
+// one delegated handler; re-render only the edited card's status so typing keeps focus
+$('qs').addEventListener('input', (e) => {
+  const card = e.target.closest('.q'); if (!card) return;
+  const q = ev.questions[+card.dataset.i], f = e.target.dataset.f;
+  if (f === 'q') q.q = e.target.value;
+  else if (f === 'a') q.answers[+e.target.dataset.j] = e.target.value;
+  else if (f === 'time') q.time = e.target.value;
+  else if (f === 'correct') q.correct = +e.target.value;
+  const bad = problem(q);
+  card.classList.toggle('bad', !!bad);
+  card.querySelector('.qhead .err').textContent = bad ? '· ' + bad : '';
+  card.querySelectorAll('.a').forEach((a, j) => a.classList.toggle('right', q.correct === j && !!q.answers[j]?.trim()));
+  setDirty();
+});
+$('qs').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-act]'); if (!b) return;
+  const i = +b.closest('.q').dataset.i, Q = ev.questions;
+  if (b.dataset.act === 'up') [Q[i - 1], Q[i]] = [Q[i], Q[i - 1]];
+  if (b.dataset.act === 'down') [Q[i + 1], Q[i]] = [Q[i], Q[i + 1]];
+  if (b.dataset.act === 'dup') Q.splice(i + 1, 0, { ...Q[i], answers: [...Q[i].answers] });
+  if (b.dataset.act === 'del') { if (Q[i].q.trim() && !confirm(`Delete Q${i + 1}?`)) return; Q.splice(i, 1); }
+  setDirty(); render();
+});
+$('addQ').onclick = () => {
+  ev.questions.push(blankQ()); setDirty(); render();
+  $('qs').lastElementChild.querySelector('textarea').focus();
+};
+
+// ---------- import / export ----------
+function parseTable(text) {
+  const delim = text.split('\n')[0].includes('\t') ? '\t' : ',';
+  const rows = []; let row = [], cell = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (c === '"') quoted = false;
+      else cell += c;
+    } else if (c === '"' && !cell) quoted = true;
+    else if (c === delim) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.map(r => r.map(c => c.trim())).filter(r => r.some(Boolean));
+}
+function rowsToQuestions(rows) {
+  const out = [], errors = [];
+  rows.forEach((r, n) => {
+    if (n === 0 && /^question$/i.test(r[0])) return;           // header row
+    const [q, ...rest] = r;
+    // Try layouts in order: template (4 answer columns, correct, seconds),
+    // then "answers..., correct", then "answers..., correct, seconds".
+    const tries = [];
+    if (rest.length >= 5) tries.push([rest.slice(0, 4), rest[4], rest[5] || '']);
+    tries.push([rest.slice(0, -1), rest[rest.length - 1], '']);
+    if (rest.length >= 4) tries.push([rest.slice(0, -2), rest[rest.length - 2], rest[rest.length - 1]]);
+    for (const [cols, c, time] of tries) {
+      const answers = cols.filter(Boolean);
+      if (!q || answers.length < 2 || answers.length > 4 || (time && !(+time >= 5 && +time <= 120))) continue;
+      let correct = -1;
+      if (/^[A-Da-d]$/.test(c)) correct = 'ABCD'.indexOf(c.toUpperCase());
+      else if (/^[1-4]$/.test(c)) correct = +c - 1;
+      else correct = answers.findIndex(a => a.toLowerCase() === String(c).toLowerCase());
+      if (!(correct >= 0 && correct < answers.length)) continue;
+      while (answers.length < 4) answers.push('');
+      return out.push({ q, answers, correct, time });
+    }
+    errors.push(`row ${n + 1}`);
+  });
+  return { out, errors };
+}
+let fileText = null;
+$('file').onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  fileText = await f.text(); $('paste').value = '';
+  $('importMsg').textContent = `Loaded ${f.name}. Click "Add to end" or "Replace all".`;
+  e.target.value = '';
+};
+function doImport(replace) {
+  const text = (fileText ?? $('paste').value).replace(/^﻿/, '');
+  if (!text.trim()) return $('importMsg').textContent = 'Paste some rows or choose a file first.';
+  let qs = [], errors = [];
+  if (/^\s*[{\[]/.test(text)) {
+    try {
+      const j = JSON.parse(text), list = Array.isArray(j) ? j : j.questions || [];
+      qs = list.map(q => ({ q: q.q || '', answers: [...(q.answers || []), '', '', '', ''].slice(0, 4), correct: q.correct ?? 0, time: q.time ?? '' }));
+      if (!Array.isArray(j)) { if (j.title && !ev.title) { ev.title = j.title; $('title').value = j.title; } }
+    } catch { return $('importMsg').textContent = 'That JSON could not be read.'; }
+  } else ({ out: qs, errors } = rowsToQuestions(parseTable(text)));
+  if (!qs.length) return $('importMsg').textContent = 'No questions found.' + (errors.length ? ' Check ' + errors.join(', ') + '.' : '');
+  if (replace && ev.questions.some(q => q.q.trim()) && !confirm(`Replace all ${ev.questions.length} questions with ${qs.length} imported ones?`)) return;
+  ev.questions = replace ? qs : ev.questions.filter(q => q.q.trim() || q.answers.some(a => a.trim())).concat(qs);
+  fileText = null; $('paste').value = '';
+  $('importMsg').innerHTML = `<span class="ok">Imported ${qs.length} question${qs.length > 1 ? 's' : ''}.</span>` +
+    (errors.length ? ` Skipped ${esc(errors.join(', '))} (missing question, answers, or correct answer).` : '');
+  setDirty(); render();
+}
+$('importAdd').onclick = () => doImport(false);
+$('importReplace').onclick = () => doImport(true);
+
+const csvCell = (v) => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
+function download(name, text) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv' })); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const HEAD = 'question,answer A,answer B,answer C,answer D,correct,seconds';
+$('template').onclick = (e) => { e.preventDefault(); download('quiz-template.csv', HEAD + '\nWhich port does SSH use by default?,21,22,23,443,B,\nWhat does the S in HTTPS stand for?,Secure,Server,,,A,15\n'); };
+$('exportCsv').onclick = () => download((evId || 'event') + '.csv', HEAD + '\n' + ev.questions.map(q =>
+  [q.q, ...[0, 1, 2, 3].map(j => q.answers[j] || ''), LETTERS[q.correct], q.time].map(csvCell).join(',')).join('\n') + '\n');
+
+// ---------- save ----------
+$('save').onclick = async () => {
+  const id = $('evId').value.replace(/^-+|-+$/g, '');
+  if (!id) { $('status').className = 'err'; return $('status').textContent = 'Give the event a file name first'; }
+  const bad = ev.questions.map((q, i) => [i, problem(q)]).filter(([, p]) => p);
+  if (bad.length) {
+    $('status').className = 'err'; $('status').textContent = `Fix Q${bad[0][0] + 1}: ${bad[0][1]}` + (bad.length > 1 ? ` (+${bad.length - 1} more)` : '');
+    return document.querySelector(`.q[data-i="${bad[0][0]}"]`).scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  const body = { title: ev.title, subtitle: ev.subtitle, timePerQuestion: ev.timePerQuestion,
+    questions: ev.questions.map(q => {
+      const answers = q.answers.map(a => a.trim()).filter(Boolean);
+      const o = { q: q.q.trim(), answers, correct: q.correct };
+      if (q.time !== '') o.time = +q.time;
+      return o;
+    }) };
+  $('save').disabled = true;
+  try {
+    const r = await api(`/api/events/${encodeURIComponent(id)}${isNew ? '?create=1' : ''}`, { method: 'PUT', body: JSON.stringify(body) });
+    evId = id; isNew = false; $('evId').value = id; $('evId').disabled = true;
+    setDirty(false); $('status').textContent = `Saved ${r.questions} questions at ${new Date().toLocaleTimeString()}`;
+  } catch (e) { $('status').className = 'err'; $('status').textContent = e.message; }
+  finally { $('save').disabled = false; }
+};
+document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 's' && !$('editor').hidden) { e.preventDefault(); $('save').click(); } });
+</script>
+</body>
+</html>
