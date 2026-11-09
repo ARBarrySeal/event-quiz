@@ -64,6 +64,7 @@
 
 <!-- 2. lobby -->
 <section id="s-lobby" class="screen">
+  <img class="evlogo" id="lobbyLogo" alt="" hidden>
   <h1 class="title center" id="lobbyTitle" style="display:flex"></h1>
   <div class="lobby-top">
     <img class="qr" id="qr" alt="Scan to join">
@@ -92,6 +93,7 @@
 
 <!-- 4. leaderboard -->
 <section id="s-board" class="screen center">
+  <img class="evlogo" data-logo alt="" hidden>
   <h1 class="title">Scoreboard</h1>
   <div class="board" id="board"></div>
   <button class="btn" id="next">Next ▶</button>
@@ -99,6 +101,7 @@
 
 <!-- 5. final -->
 <section id="s-final" class="screen center">
+  <img class="evlogo" data-logo alt="" hidden>
   <h1 class="title" id="finalTitle">Winners</h1>
   <div class="podium" id="podium"></div>
   <div style="display:flex;gap:16px">
@@ -133,6 +136,7 @@ $('create').onclick = () => socket.emit('host:create', { key, eventId: $('event'
 });
 function enterLobby(r) {
   pin = r.pin; total = r.total; store('hostKey', key); store('hostPin', pin);
+  document.querySelectorAll('#lobbyLogo, [data-logo]').forEach(img => { img.hidden = !r.logo; if (r.logo) img.src = r.logo; });
   $('lobbyTitle').textContent = r.title; $('pin').textContent = pin.replace(/(\d{3})(\d{3})/, '$1 $2');
   $('qr').src = `/api/qr/${pin}.png`; $('joinUrl').textContent = `${location.host}/play.html?pin=${pin}`;
   $('csv').href = `/api/registrations.csv?key=${encodeURIComponent(key)}`;

@@ -21,6 +21,7 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 const leads = createLeadSync({ dataDir: DATA_DIR });
 
 const app = express();
+app.set('trust proxy', true);   // Cloud Run terminates HTTPS; makes QR links https://
 const server = http.createServer(app);
 const io = new Server(server, { pingInterval: 10000, pingTimeout: 20000 });
 app.use(express.json({ limit: '1mb' }));
@@ -70,6 +71,12 @@ function validateEvent(e) {
   });
   const out = { title, timePerQuestion: tpq, questions };
   if (clean(e.subtitle, 120)) out.subtitle = clean(e.subtitle, 120);
+  // Optional logo: only images shipped in public/logos/, never an outside URL.
+  const logo = clean(e.logo, 100);
+  if (logo) {
+    if (!/^\/logos\/[\w.-]+\.(png|jpe?g|svg|webp)$/i.test(logo)) throw new Error('logo must be a file in /logos/');
+    out.logo = logo;
+  }
   return out;
 }
 const eventPath = (id) => {
@@ -151,13 +158,13 @@ io.on('connection', (socket) => {
     const g = { pin, eventId, event, players: new Map(), phase: 'lobby', qIndex: -1, answers: new Map() };
     games.set(pin, g);
     socket.join(pin + ':host'); socket.data.hostPin = pin;
-    cb({ pin, title: event.title, total: event.questions.length });
+    cb({ pin, title: event.title, logo: event.logo || '', total: event.questions.length });
   });
   socket.on('host:rejoin', ({ key, pin } = {}, cb = () => {}) => {
     const g = games.get(pin);
     if (!isHost(key) || !g) return cb({ error: 'Game not found' });
     socket.join(pin + ':host'); socket.data.hostPin = pin;
-    cb({ pin, title: g.event.title, total: g.event.questions.length, phase: g.phase, qIndex: g.qIndex });
+    cb({ pin, title: g.event.title, logo: g.event.logo || '', total: g.event.questions.length, phase: g.phase, qIndex: g.qIndex });
     lobbyUpdate(g);
   });
   const hostGame = () => games.get(socket.data.hostPin);
@@ -187,7 +194,7 @@ io.on('connection', (socket) => {
     g.players.set(p.id, p); saveRegistration(g, p);
     socket.join(p.id); socket.join(g.pin + ':players');
     socket.data.pin = g.pin; socket.data.pid = p.id;
-    cb({ playerId: p.id, name: p.name, title: g.event.title });
+    cb({ playerId: p.id, name: p.name, title: g.event.title, logo: g.event.logo || '' });
     lobbyUpdate(g);
   });
   socket.on('player:rejoin', ({ pin, playerId } = {}, cb = () => {}) => {
@@ -195,7 +202,7 @@ io.on('connection', (socket) => {
     if (!p) return cb({ error: 'Session expired' });
     socket.join(p.id); socket.join(g.pin + ':players');
     socket.data.pin = g.pin; socket.data.pid = p.id;
-    cb({ name: p.name, score: p.score, title: g.event.title, phase: g.phase });
+    cb({ name: p.name, score: p.score, title: g.event.title, logo: g.event.logo || '', phase: g.phase });
     // Phone dropped mid-question: resend it with the time that's left
     if (g.phase === 'question' && !g.answers.has(p.id)) {
       const q = g.event.questions[g.qIndex];
@@ -239,6 +246,11 @@ app.put('/api/events/:id', hostOnly, (req, res) => {
     saveEvent(req.params.id, e);
     res.json({ ok: true, id: req.params.id, questions: e.questions.length });
   } catch (e) { res.status(400).json({ error: e.message }); }
+});
+// Public: lets the check-in page show the event's title and logo before the player joins.
+app.get('/api/game/:pin', (req, res) => {
+  const g = games.get(req.params.pin);
+  g ? res.json({ title: g.event.title, logo: g.event.logo || '' }) : res.sendStatus(404);
 });
 app.get('/api/qr/:pin.png', async (req, res) => {
   const url = `${baseUrl(req)}/play.html?pin=${encodeURIComponent(req.params.pin)}`;

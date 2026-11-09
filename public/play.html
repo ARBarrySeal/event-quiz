@@ -50,6 +50,7 @@
 <!-- 1. check-in -->
 <section id="s-join" class="screen on">
   <form class="card" id="joinForm" autocomplete="on">
+    <img class="evlogo" id="joinLogo" alt="" hidden style="height:90px">
     <h2 id="evTitle">Join the game</h2>
     <div class="muted">Check in to play. Faster right answers score more.</div>
     <input id="pin" class="pinin" inputmode="numeric" pattern="\d{6}" maxlength="6" placeholder="PIN" required>
@@ -65,6 +66,7 @@
 
 <!-- 2. waiting in lobby / between questions -->
 <section id="s-wait" class="screen center">
+  <img class="evlogo" id="waitLogo" alt="" hidden style="height:110px">
   <div class="big pop">✔</div>
   <h1 id="waitTitle">You're in!</h1>
   <div class="muted" id="waitMsg">Look for your name on the big screen.</div>
@@ -123,14 +125,24 @@ const ord = (n) => n + (['th','st','nd','rd'][(n % 100 - 20) % 10] || ['th','st'
 const buzz = (ms) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
 function save(s) { session = s; try { const v = JSON.stringify(s); sessionStorage.setItem(KEY, v); localStorage.setItem(KEY, v); } catch {} }
 function resetSession() { try { sessionStorage.removeItem(KEY); localStorage.removeItem(KEY); } catch {} session = null; $('top').hidden = true; show('s-join'); }
-function enterGame(name, title) {
+function showLogo(logo) {
+  ['joinLogo', 'waitLogo'].forEach(id => { $(id).hidden = !logo; if (logo) $(id).src = logo; });
+}
+function enterGame(name, title, logo) {
   $('tName').textContent = name; $('top').hidden = false;
   if (title) document.title = title;
+  showLogo(logo);
 }
 
 // Prefill PIN from the QR link, remember contact details on this phone
 const qsPin = new URLSearchParams(location.search).get('pin');
-if (qsPin) $('pin').value = qsPin.replace(/\D/g, '').slice(0, 6);
+if (qsPin) {
+  $('pin').value = qsPin.replace(/\D/g, '').slice(0, 6);
+  fetch('/api/game/' + $('pin').value).then(r => r.ok ? r.json() : null).then(g => {
+    if (!g) return;
+    $('evTitle').textContent = g.title; showLogo(g.logo);
+  }).catch(() => {});
+}
 try { const d = JSON.parse(localStorage.getItem('eq-contact') || '{}');
   ['name','email','phone','linkedin'].forEach(k => d[k] && ($(k).value = d[k])); } catch {}
 
@@ -145,7 +157,7 @@ $('joinForm').addEventListener('submit', (e) => {
     if (r.error) return $('err').textContent = r.error;
     try { localStorage.setItem('eq-contact', JSON.stringify({ name: d.name, email: d.email, phone: d.phone, linkedin: d.linkedin })); } catch {}
     save({ pin: d.pin, playerId: r.playerId });
-    enterGame(r.name, r.title); setScore(0);
+    enterGame(r.name, r.title, r.logo); setScore(0);
     $('waitTitle').textContent = "You're in!"; $('waitMsg').textContent = 'Look for your name on the big screen.';
     show('s-wait'); buzz(60);
   });
@@ -156,7 +168,7 @@ socket.on('connect', () => {
   if (!session) return;
   socket.emit('player:rejoin', session, (r) => {
     if (r.error) { if (!$('s-join').classList.contains('on')) { $('mText').textContent = 'Your session expired. Check in again to keep playing.'; show('s-msg'); } resetSessionSilently(); return; }
-    enterGame(r.name, r.title); setScore(r.score);
+    enterGame(r.name, r.title, r.logo); setScore(r.score);
     if (r.phase === 'final') { $('fRank').textContent = 'Game over'; $('fScore').textContent = r.score.toLocaleString() + ' pts'; show('s-final'); }
     else if (r.phase !== 'question') { $('waitTitle').textContent = 'Back in the game'; $('waitMsg').textContent = 'Next question coming up…'; show('s-wait'); }
     // phase 'question': server resends it right after this

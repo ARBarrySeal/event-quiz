@@ -137,7 +137,7 @@ $('back').onclick = async () => {
 };
 
 function openEditor(data, id, fresh) {
-  ev = { title: data.title || '', subtitle: data.subtitle || '', timePerQuestion: data.timePerQuestion || 20,
+  ev = { title: data.title || '', subtitle: data.subtitle || '', logo: data.logo || '', timePerQuestion: data.timePerQuestion || 20,
     questions: (data.questions || []).map(q => ({ q: q.q || '', answers: [...(q.answers || [])], correct: q.correct ?? 0, time: q.time ?? '' })) };
   evId = id; isNew = fresh;
   $('evId').value = id; $('evId').disabled = !fresh;
@@ -309,7 +309,7 @@ $('save').onclick = async () => {
     $('status').className = 'err'; $('status').textContent = `Fix Q${bad[0][0] + 1}: ${bad[0][1]}` + (bad.length > 1 ? ` (+${bad.length - 1} more)` : '');
     return document.querySelector(`.q[data-i="${bad[0][0]}"]`).scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
-  const body = { title: ev.title, subtitle: ev.subtitle, timePerQuestion: ev.timePerQuestion,
+  const body = { title: ev.title, subtitle: ev.subtitle, logo: ev.logo, timePerQuestion: ev.timePerQuestion,
     questions: ev.questions.map(q => {
       const answers = q.answers.map(a => a.trim()).filter(Boolean);
       const o = { q: q.q.trim(), answers, correct: q.correct };
