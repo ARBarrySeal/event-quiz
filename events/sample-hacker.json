@@ -1,0 +1,12 @@
+{
+  "title": "Hacker Jeopardy",
+  "subtitle": "Scan, sign in, and answer fast",
+  "timePerQuestion": 20,
+  "questions": [
+    { "q": "What does the 'S' in HTTPS stand for?", "answers": ["Secure", "Server", "Socket", "Signed"], "correct": 0 },
+    { "q": "Which port does SSH use by default?", "answers": ["21", "22", "23", "443"], "correct": 1 },
+    { "q": "Which attack tricks a user's browser into sending an unwanted request to a site they're logged into?", "answers": ["XSS", "SQLi", "CSRF", "SSRF"], "correct": 2 },
+    { "q": "What tool is famous for network port scanning?", "answers": ["Wireshark", "Nmap", "Burp Suite", "John the Ripper"], "correct": 1 },
+    { "q": "In the CIA triad, what does the 'A' stand for?", "answers": ["Authentication", "Authorization", "Availability", "Auditing"], "correct": 2, "time": 15 }
+  ]
+}

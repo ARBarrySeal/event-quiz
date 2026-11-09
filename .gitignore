@@ -1,0 +1,7 @@
+node_modules/
+data/
+test/server.log
+.env
+# live question sets stay private
+events/*.json
+!events/sample-*.json
