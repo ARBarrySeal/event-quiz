@@ -62,15 +62,19 @@
       <label class="f">Event file name (letters, numbers, dashes)<input id="evId" placeholder="sdmac-mixer-2027"></label>
       <label class="f">Title (shown on the big screen)<input id="title" maxlength="80"></label>
       <label class="f">Subtitle (optional)<input id="subtitle" maxlength="120"></label>
-      <label class="f">Seconds per question (5-120)<input id="tpq" type="number" min="5" max="120" value="20"></label>
+      <div class="row">
+        <label class="f">Seconds per question (5-120)<input id="tpq" type="number" min="5" max="120" value="20"></label>
+        <label class="f">Double points on the last N questions (0-10)<input id="dbl" type="number" min="0" max="10" value="0"></label>
+      </div>
       <p class="muted" style="margin:0">Files named <code>sample-…</code> are published to the public GitHub repo. Every other file stays private, so players can't look up the answers.</p>
     </div>
 
     <div class="card">
       <h2>Import questions</h2>
       <p class="muted" style="margin:0">Paste rows from Excel or Google Sheets, or a CSV. One question per row:
-        <code>question, answer A, answer B, answer C, answer D, correct, seconds</code>.
-        Correct can be <code>A</code>-<code>D</code>, <code>1</code>-<code>4</code>, or the answer text. Answers C and D, and seconds, are optional. A header row is skipped.</p>
+        <code>question, answer A, answer B, answer C, answer D, correct, seconds, fun fact</code>.
+        Correct can be <code>A</code>-<code>D</code>, <code>1</code>-<code>4</code>, or the answer text. Answers C and D, seconds, and fun fact are optional
+        (fun fact needs all 4 answer columns, blank is fine). A header row is skipped.</p>
       <textarea id="paste" placeholder="Which port does SSH use?	21	22	23	443	B"></textarea>
       <div class="row">
         <label class="btn ghost small" style="cursor:pointer">Choose CSV / JSON file<input type="file" id="file" accept=".csv,.tsv,.txt,.json" hidden></label>
@@ -137,21 +141,22 @@ $('back').onclick = async () => {
 };
 
 function openEditor(data, id, fresh) {
-  ev = { title: data.title || '', subtitle: data.subtitle || '', logo: data.logo || '', timePerQuestion: data.timePerQuestion || 20,
-    questions: (data.questions || []).map(q => ({ q: q.q || '', answers: [...(q.answers || [])], correct: q.correct ?? 0, time: q.time ?? '' })) };
+  ev = { title: data.title || '', subtitle: data.subtitle || '', logo: data.logo || '', timePerQuestion: data.timePerQuestion || 20, doubleLast: data.doubleLast || 0,
+    questions: (data.questions || []).map(q => ({ q: q.q || '', answers: [...(q.answers || [])], correct: q.correct ?? 0, time: q.time ?? '', fact: q.fact || '' })) };
   evId = id; isNew = fresh;
   $('evId').value = id; $('evId').disabled = !fresh;
-  $('title').value = ev.title; $('subtitle').value = ev.subtitle; $('tpq').value = ev.timePerQuestion;
+  $('title').value = ev.title; $('subtitle').value = ev.subtitle; $('tpq').value = ev.timePerQuestion; $('dbl').value = ev.doubleLast;
   $('pick').hidden = true; $('editor').hidden = $('saveBar').hidden = false;
   $('importMsg').textContent = ''; $('status').textContent = fresh ? 'New event - not saved yet' : 'Saved'; $('status').className = fresh ? 'muted' : 'ok';
   dirty = fresh; render();
 }
-const blankQ = () => ({ q: '', answers: ['', '', '', ''], correct: 0, time: '' });
+const blankQ = () => ({ q: '', answers: ['', '', '', ''], correct: 0, time: '', fact: '' });
 
 // ---------- event fields ----------
 $('title').oninput = (e) => { ev.title = e.target.value; $('edTitle').textContent = ev.title || 'Event'; setDirty(); };
 $('subtitle').oninput = (e) => { ev.subtitle = e.target.value; setDirty(); };
 $('tpq').oninput = (e) => { ev.timePerQuestion = +e.target.value; setDirty(); };
+$('dbl').oninput = (e) => { ev.doubleLast = +e.target.value || 0; setDirty(); render(); };
 $('evId').oninput = (e) => { e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9_-]+/g, '-'); setDirty(); };
 
 // ---------- question list ----------
@@ -162,6 +167,7 @@ function problem(q) {
   if (q.answers.slice(0, filled.length).some(a => !a.trim())) return 'fill answers in order (no gaps)';
   if (!q.answers[q.correct]?.trim()) return 'mark which answer is correct';
   if (q.time !== '' && !(+q.time >= 5 && +q.time <= 120)) return 'seconds must be 5-120';
+  if ((q.fact || '').length > 200) return 'fun fact is over 200 characters';
   return '';
 }
 function render() {
@@ -169,7 +175,7 @@ function render() {
   $('qs').innerHTML = ev.questions.map((q, i) => {
     const bad = problem(q);
     return `<div class="card q ${bad ? 'bad' : ''}" data-i="${i}">
-      <div class="qhead"><span><b>Q${i + 1}</b> <span class="err" style="font-size:13px">${bad ? '· ' + esc(bad) : ''}</span></span>
+      <div class="qhead"><span><b>Q${i + 1}</b>${i >= ev.questions.length - (ev.doubleLast || 0) ? ' <span class="ok" style="font-size:13px">⚡ double points</span>' : ''} <span class="err" style="font-size:13px">${bad ? '· ' + esc(bad) : ''}</span></span>
         <span class="tools">
           <button class="btn ghost small" data-act="up" ${i ? '' : 'disabled'} title="Move up">↑</button>
           <button class="btn ghost small" data-act="down" ${i < ev.questions.length - 1 ? '' : 'disabled'} title="Move down">↓</button>
@@ -183,7 +189,10 @@ function render() {
           ${SHAPES[j]}
           <input type="text" data-f="a" data-j="${j}" maxlength="80" value="${esc(q.answers[j] || '')}" placeholder="Answer ${LETTERS[j]}${j > 1 ? ' (optional)' : ''}">
         </label>`).join('')}</div>
-      <label class="f" style="max-width:220px">Seconds (blank = event default)<input type="number" min="5" max="120" data-f="time" value="${esc(q.time)}"></label>
+      <div class="row">
+        <label class="f" style="flex:0 0 200px">Seconds (blank = event default)<input type="number" min="5" max="120" data-f="time" value="${esc(q.time)}"></label>
+        <label class="f">Fun fact shown after the answer (optional)<input type="text" maxlength="200" data-f="fact" value="${esc(q.fact || '')}" placeholder="e.g. The first DEF CON was in 1993 with about 100 people"></label>
+      </div>
     </div>`;
   }).join('');
   $('status').title = '';
@@ -195,6 +204,7 @@ $('qs').addEventListener('input', (e) => {
   if (f === 'q') q.q = e.target.value;
   else if (f === 'a') q.answers[+e.target.dataset.j] = e.target.value;
   else if (f === 'time') q.time = e.target.value;
+  else if (f === 'fact') q.fact = e.target.value;
   else if (f === 'correct') q.correct = +e.target.value;
   const bad = problem(q);
   card.classList.toggle('bad', !!bad);
@@ -242,10 +252,10 @@ function rowsToQuestions(rows) {
     // Try layouts in order: template (4 answer columns, correct, seconds),
     // then "answers..., correct", then "answers..., correct, seconds".
     const tries = [];
-    if (rest.length >= 5) tries.push([rest.slice(0, 4), rest[4], rest[5] || '']);
+    if (rest.length >= 5) tries.push([rest.slice(0, 4), rest[4], rest[5] || '', rest.slice(6).join(', ')]);
     tries.push([rest.slice(0, -1), rest[rest.length - 1], '']);
     if (rest.length >= 4) tries.push([rest.slice(0, -2), rest[rest.length - 2], rest[rest.length - 1]]);
-    for (const [cols, c, time] of tries) {
+    for (const [cols, c, time, fact = ''] of tries) {
       const answers = cols.filter(Boolean);
       if (!q || answers.length < 2 || answers.length > 4 || (time && !(+time >= 5 && +time <= 120))) continue;
       let correct = -1;
@@ -254,7 +264,7 @@ function rowsToQuestions(rows) {
       else correct = answers.findIndex(a => a.toLowerCase() === String(c).toLowerCase());
       if (!(correct >= 0 && correct < answers.length)) continue;
       while (answers.length < 4) answers.push('');
-      return out.push({ q, answers, correct, time });
+      return out.push({ q, answers, correct, time, fact: fact.slice(0, 200) });
     }
     errors.push(`row ${n + 1}`);
   });
@@ -274,7 +284,7 @@ function doImport(replace) {
   if (/^\s*[{\[]/.test(text)) {
     try {
       const j = JSON.parse(text), list = Array.isArray(j) ? j : j.questions || [];
-      qs = list.map(q => ({ q: q.q || '', answers: [...(q.answers || []), '', '', '', ''].slice(0, 4), correct: q.correct ?? 0, time: q.time ?? '' }));
+      qs = list.map(q => ({ q: q.q || '', answers: [...(q.answers || []), '', '', '', ''].slice(0, 4), correct: q.correct ?? 0, time: q.time ?? '', fact: q.fact || '' }));
       if (!Array.isArray(j)) { if (j.title && !ev.title) { ev.title = j.title; $('title').value = j.title; } }
     } catch { return $('importMsg').textContent = 'That JSON could not be read.'; }
   } else ({ out: qs, errors } = rowsToQuestions(parseTable(text)));
@@ -295,10 +305,10 @@ function download(name, text) {
   a.href = URL.createObjectURL(new Blob(['﻿' + text], { type: 'text/csv' })); a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
-const HEAD = 'question,answer A,answer B,answer C,answer D,correct,seconds';
-$('template').onclick = (e) => { e.preventDefault(); download('quiz-template.csv', HEAD + '\nWhich port does SSH use by default?,21,22,23,443,B,\nWhat does the S in HTTPS stand for?,Secure,Server,,,A,15\n'); };
+const HEAD = 'question,answer A,answer B,answer C,answer D,correct,seconds,fun fact';
+$('template').onclick = (e) => { e.preventDefault(); download('quiz-template.csv', HEAD + '\nWhich port does SSH use by default?,21,22,23,443,B,,SSH was written in 1995 after a password-sniffing attack at a Finnish university\nWhat does the S in HTTPS stand for?,Secure,Server,,,A,15,\n'); };
 $('exportCsv').onclick = () => download((evId || 'event') + '.csv', HEAD + '\n' + ev.questions.map(q =>
-  [q.q, ...[0, 1, 2, 3].map(j => q.answers[j] || ''), LETTERS[q.correct], q.time].map(csvCell).join(',')).join('\n') + '\n');
+  [q.q, ...[0, 1, 2, 3].map(j => q.answers[j] || ''), LETTERS[q.correct], q.time, q.fact || ''].map(csvCell).join(',')).join('\n') + '\n');
 
 // ---------- save ----------
 $('save').onclick = async () => {
@@ -309,11 +319,12 @@ $('save').onclick = async () => {
     $('status').className = 'err'; $('status').textContent = `Fix Q${bad[0][0] + 1}: ${bad[0][1]}` + (bad.length > 1 ? ` (+${bad.length - 1} more)` : '');
     return document.querySelector(`.q[data-i="${bad[0][0]}"]`).scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
-  const body = { title: ev.title, subtitle: ev.subtitle, logo: ev.logo, timePerQuestion: ev.timePerQuestion,
+  const body = { title: ev.title, subtitle: ev.subtitle, logo: ev.logo, timePerQuestion: ev.timePerQuestion, doubleLast: ev.doubleLast || 0,
     questions: ev.questions.map(q => {
       const answers = q.answers.map(a => a.trim()).filter(Boolean);
       const o = { q: q.q.trim(), answers, correct: q.correct };
       if (q.time !== '') o.time = +q.time;
+      if ((q.fact || '').trim()) o.fact = q.fact.trim();
       return o;
     }) };
   $('save').disabled = true;

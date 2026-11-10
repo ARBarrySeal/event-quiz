@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const QRCode = require('qrcode');
 const { Server } = require('socket.io');
 const { createLeadSync } = require('./leads');
+const { isRudeName } = require('./names');
 
 const PORT = process.env.PORT || 8080;
 const HOST_KEY = process.env.HOST_KEY || 'changeme';          // host/admin password
@@ -63,6 +64,7 @@ function validateEvent(e) {
     if (answers.some(a => !a)) throw new Error(`${n} has a blank answer`);
     if (!(Number.isInteger(q.correct) && q.correct >= 0 && q.correct < answers.length)) throw new Error(`${n} has no correct answer marked`);
     const out = { q: text, answers, correct: q.correct };
+    if (clean(q.fact, 200)) out.fact = clean(q.fact, 200);   // fun fact shown on the big screen after the answer
     if (q.time != null && q.time !== '') {
       const t = Number(q.time);
       if (!(t >= 5 && t <= 120)) throw new Error(`${n} time must be 5-120 seconds`);
@@ -71,6 +73,9 @@ function validateEvent(e) {
     return out;
   });
   const out = { title, timePerQuestion: tpq, questions };
+  const dbl = Number(e.doubleLast) || 0;   // double points on the last N questions
+  if (!(Number.isInteger(dbl) && dbl >= 0 && dbl <= 10)) throw new Error('double-points questions must be 0-10');
+  if (dbl) out.doubleLast = dbl;
   if (clean(e.subtitle, 120)) out.subtitle = clean(e.subtitle, 120);
   // Optional logo: only images shipped in public/logos/, never an outside URL.
   const logo = clean(e.logo, 100);
@@ -93,8 +98,22 @@ function saveEvent(id, e) {
   fs.writeFileSync(tmp, JSON.stringify(e, null, 2) + '\n');
   fs.renameSync(tmp, file);   // atomic: a crash mid-save never leaves a half-written file
 }
-const leaderboard = (g, n = 5) => [...g.players.values()]
-  .sort((a, b) => b.score - a.score).slice(0, n).map(p => ({ name: p.name, score: p.score }));
+// Sort by score and give tied players the same rank.
+function rankAll(g) {
+  const list = [...g.players.values()].sort((a, b) => b.score - a.score);
+  let r = 0;
+  list.forEach((p, i) => { if (!i || p.score !== list[i - 1].score) r = i + 1; p.rank = r; });
+  return list;
+}
+const leaderboard = (list, n = 5) => list.slice(0, n).map(p => ({ name: p.name, score: p.score, rank: p.rank, moved: p.moved || 0 }));
+const qTime = (g, q) => q.time || g.event.timePerQuestion || 20;
+const isDouble = (g, i) => i >= g.event.questions.length - (g.event.doubleLast || 0);
+// Current question as players/host see it, with the seconds left (full time when just sent).
+function questionPayload(g) {
+  const q = g.event.questions[g.qIndex], total = qTime(g, q);
+  const time = Math.max(1, Math.round(total - (Date.now() - g.qStart) / 1000));
+  return { index: g.qIndex, total: g.event.questions.length, count: q.answers.length, time, q: q.q, answers: q.answers, double: isDouble(g, g.qIndex) };
+}
 
 let regWrites = Promise.resolve();
 function saveRegistration(g, p) {
@@ -109,14 +128,12 @@ function saveRegistration(g, p) {
 
 // ---------- game flow ----------
 function sendQuestion(g) {
-  const q = g.event.questions[g.qIndex];
-  const time = q.time || g.event.timePerQuestion || 20;
   g.phase = 'question'; g.answers = new Map(); g.qStart = Date.now();
-  const pub = { index: g.qIndex, total: g.event.questions.length, q: q.q, answers: q.answers, time };
+  const pub = questionPayload(g);
   io.to(g.pin + ':host').emit('question', pub);
-  io.to(g.pin + ':players').emit('question', { index: pub.index, total: pub.total, count: q.answers.length, time, q: q.q, answers: q.answers });
+  io.to(g.pin + ':players').emit('question', pub);
   clearTimeout(g.timer);
-  g.timer = setTimeout(() => reveal(g), time * 1000 + 500);
+  g.timer = setTimeout(() => reveal(g), qTime(g, g.event.questions[g.qIndex]) * 1000 + 500);
 }
 
 function reveal(g) {
@@ -125,25 +142,58 @@ function reveal(g) {
   g.phase = 'reveal';
   const q = g.event.questions[g.qIndex];
   const counts = q.answers.map(() => 0);
-  for (const a of g.answers.values()) counts[a.choice]++;
-  const ranked = [...g.players.values()].sort((a, b) => b.score - a.score);
-  ranked.forEach((p, i) => {
+  let right = 0;
+  for (const a of g.answers.values()) { counts[a.choice]++; if (a.correct) right++; }
+  const pct = g.answers.size ? Math.round(100 * right / g.answers.size) : 0;
+  const list = rankAll(g);
+  let ahead = null;   // lowest-scoring player who is still ahead of the current one
+  let nextIdx = 0;    // first player with a lower score than the current one
+  list.forEach((p, i) => {
+    if (i && p.score !== list[i - 1].score) ahead = list[i - 1];
+    if (nextIdx <= i) { nextIdx = i; while (nextIdx < list.length && list[nextIdx].score >= p.score) nextIdx++; }
+    const next = list[nextIdx];
+    p.moved = p.prevRank ? p.prevRank - p.rank : 0;
+    if (p.firstRank == null) p.firstRank = p.rank;   // for the "biggest climber" prize
     const a = g.answers.get(p.id);
     if (!a) p.streak = 0;
-    io.to(p.id).emit('result', { correct: !!a?.correct, answered: !!a, points: a?.points || 0,
-      score: p.score, rank: i + 1, of: ranked.length, streak: p.streak });
+    io.to(p.id).emit('result', { correct: !!a?.correct, answered: !!a, points: a?.points || 0, double: isDouble(g, g.qIndex),
+      score: p.score, rank: p.rank, of: list.length, streak: p.streak, moved: p.moved, pct,
+      behind: p.rank > 1 && ahead ? { name: ahead.name, gap: ahead.score - p.score } : null,
+      leadBy: p.rank === 1 && next ? p.score - next.score : null });
   });
-  io.to(g.pin + ':host').emit('reveal', { correct: q.correct, counts, answered: g.answers.size,
-    leaderboard: leaderboard(g), last: g.qIndex === g.event.questions.length - 1 });
+  g.lastReveal = { q: g.qIndex, correct: q.correct, counts, answered: g.answers.size, pct, fact: q.fact || '',
+    leaderboard: leaderboard(list), last: g.qIndex === g.event.questions.length - 1 };
+  io.to(g.pin + ':host').emit('reveal', g.lastReveal);
+  list.forEach(p => { p.prevRank = p.rank; });
+}
+
+// Bonus prizes so more people win than the top 3. Each goes to the best player outside the podium
+// (skipped if nobody there qualifies) and nobody wins two.
+function awards(list) {
+  const out = [], used = new Set();
+  const give = (title, emoji, value, detail) => {
+    const pool = list.filter(p => p.rank > 3 && !used.has(p.id)).map(p => [p, value(p)]).filter(([, v]) => v != null && v > 0);
+    if (!pool.length) return;
+    pool.sort((a, b) => b[1] - a[1] || a[0].rank - b[0].rank);
+    const [p, v] = pool[0]; used.add(p.id);
+    p.award = `${emoji} ${title}`;
+    out.push({ title, emoji, name: p.name, detail: detail(p, v) });
+  };
+  give('Longest streak', '🔥', p => p.bestStreak >= 3 ? p.bestStreak : null, (p) => `${p.bestStreak} right in a row`);
+  give('Biggest climber', '🚀', p => p.firstRank != null ? p.firstRank - p.rank : null, (p, v) => `up ${v} place${v > 1 ? 's' : ''}`);
+  give('Fastest finger', '⚡', p => p.fastest != null ? 1e7 - p.fastest : null, (p) => `${(p.fastest / 1000).toFixed(1)}s right answer`);
+  return out;
 }
 
 function finish(g) {
   clearTimeout(g.timer);
   g.phase = 'final';
-  const podium = leaderboard(g, 10);
-  io.to(g.pin + ':host').emit('final', { podium });
-  const ranked = [...g.players.values()].sort((a, b) => b.score - a.score);
-  ranked.forEach((p, i) => io.to(p.id).emit('final', { rank: i + 1, of: ranked.length, score: p.score }));
+  const list = rankAll(g);
+  list.forEach(p => { delete p.award; });
+  const bonus = awards(list);
+  g.finalData = { podium: leaderboard(list, 10), awards: bonus };
+  io.to(g.pin + ':host').emit('final', g.finalData);
+  list.forEach(p => io.to(p.id).emit('final', { rank: p.rank, of: list.length, score: p.score, award: p.award || '' }));
 }
 
 const lobbyUpdate = (g) => io.to(g.pin + ':host').emit('lobby', {
@@ -173,10 +223,10 @@ io.on('connection', (socket) => {
     if (!isHost(key)) return cb({ error: 'Wrong host key' });
     let event; try { event = loadEvent(eventId); } catch (e) { return cb({ error: e.message }); }
     const pin = newPin();
-    const g = { pin, eventId, event, players: new Map(), phase: 'lobby', qIndex: -1, answers: new Map() };
+    const g = { pin, eventId, event, players: new Map(), phase: 'lobby', qIndex: -1, answers: new Map(), banned: new Set() };
     games.set(pin, g);
     socket.join(pin + ':host'); socket.data.hostPin = pin;
-    cb({ pin, title: event.title, logo: event.logo || '', total: event.questions.length });
+    cb({ pin, title: event.title, logo: event.logo || '', total: event.questions.length, phase: 'lobby', qIndex: -1 });
   });
   socket.on('host:rejoin', ({ key, pin } = {}, cb = () => {}) => {
     const g = games.get(pin);
@@ -184,62 +234,93 @@ io.on('connection', (socket) => {
     socket.join(pin + ':host'); socket.data.hostPin = pin;
     cb({ pin, title: g.event.title, logo: g.event.logo || '', total: g.event.questions.length, phase: g.phase, qIndex: g.qIndex });
     lobbyUpdate(g);
+    // Host screen was refreshed mid-game: put it back exactly where the game is.
+    if (g.phase === 'question') {
+      socket.emit('question', questionPayload(g));
+      socket.emit('answered', { answered: g.answers.size, players: g.players.size });
+    } else if (g.phase === 'reveal') {
+      socket.emit('question', { ...questionPayload(g), time: 0 });
+      socket.emit('reveal', g.lastReveal);
+    } else if (g.phase === 'final') socket.emit('final', g.finalData);
   });
   const hostGame = () => games.get(socket.data.hostPin);
-  socket.on('host:next', () => {
-    const g = hostGame(); if (!g) return;
-    if (g.phase === 'question') return reveal(g);           // skip timer
+  // act 'reveal' = end the current question early; act 'advance' = start / next question / final results.
+  // q is the question the host screen is showing, so a double-click or stale screen can't skip a question.
+  socket.on('host:next', ({ act, q } = {}) => {
+    const g = hostGame(); if (!g || q !== g.qIndex) return;
+    if (act === 'reveal') { if (g.phase === 'question') reveal(g); return; }
+    if (act !== 'advance' || !(g.phase === 'lobby' || g.phase === 'reveal')) return;
     if (g.qIndex + 1 >= g.event.questions.length) return finish(g);
     g.qIndex++; sendQuestion(g);
   });
+  // Remove a player (rude name etc). Their email can't rejoin this game.
   socket.on('host:kick', ({ name } = {}) => {
     const g = hostGame(); if (!g) return;
-    for (const p of g.players.values()) if (p.name === name) { g.players.delete(p.id); io.to(p.id).emit('kicked'); }
+    for (const p of g.players.values()) if (p.name === name) {
+      g.players.delete(p.id); g.answers.delete(p.id); g.banned.add(p.email);
+      io.to(p.id).emit('kicked');
+      io.in(p.id).socketsLeave([g.pin + ':players', p.id]);
+    }
     lobbyUpdate(g);
+    if (g.phase === 'question') {
+      io.to(g.pin + ':host').emit('answered', { answered: g.answers.size, players: g.players.size });
+      if (g.players.size && g.answers.size >= g.players.size) reveal(g);
+    }
   });
 
   // PLAYER
+  const attach = (g, p) => {
+    socket.join(p.id); socket.join(g.pin + ':players');
+    socket.data.pin = g.pin; socket.data.pid = p.id;
+  };
+  // Phone joined or came back mid-question: send it with the time that's left
+  const catchUp = (g, p) => { if (g.phase === 'question' && !g.answers.has(p.id)) socket.emit('question', questionPayload(g)); };
   socket.on('player:join', (d = {}, cb = () => {}) => {
     const g = games.get(clean(d.pin, 6));
     if (!g) return cb({ error: 'No game with that PIN' });
     if (g.phase === 'final') return cb({ error: 'This game has ended' });
     const p = { id: crypto.randomUUID(), name: clean(d.name, 24), email: clean(d.email, 120).toLowerCase(),
-      phone: clean(d.phone, 30), linkedin: clean(d.linkedin, 200), consent: !!d.consent, score: 0, streak: 0 };
+      phone: clean(d.phone, 30), linkedin: clean(d.linkedin, 200), consent: !!d.consent, score: 0, streak: 0, bestStreak: 0 };
     if (!p.name) return cb({ error: 'Name is required' });
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(p.email)) return cb({ error: 'Valid email is required' });
+    if (g.banned.has(p.email)) return cb({ error: 'The host removed you from this game' });
+    // Same email already playing (lost the session, new browser): put them back on their own score
+    // instead of creating a second player and a duplicate lead row.
+    const mine = [...g.players.values()].find(x => x.email === p.email);
+    if (mine) {
+      attach(g, mine);
+      cb({ playerId: mine.id, name: mine.name, score: mine.score, resumed: true, title: g.event.title, logo: g.event.logo || '' });
+      return catchUp(g, mine);
+    }
+    if (isRudeName(p.name)) return cb({ error: 'Please pick a different screen name' });
     if ([...g.players.values()].some(x => x.name.toLowerCase() === p.name.toLowerCase()))
       return cb({ error: 'That name is taken' });
     g.players.set(p.id, p); saveRegistration(g, p);
-    socket.join(p.id); socket.join(g.pin + ':players');
-    socket.data.pin = g.pin; socket.data.pid = p.id;
-    cb({ playerId: p.id, name: p.name, title: g.event.title, logo: g.event.logo || '' });
+    attach(g, p);
+    cb({ playerId: p.id, name: p.name, score: 0, title: g.event.title, logo: g.event.logo || '' });
     lobbyUpdate(g);
+    catchUp(g, p);
   });
   socket.on('player:rejoin', ({ pin, playerId } = {}, cb = () => {}) => {
     const g = games.get(pin); const p = g?.players.get(playerId);
     if (!p) return cb({ error: 'Session expired' });
-    socket.join(p.id); socket.join(g.pin + ':players');
-    socket.data.pin = g.pin; socket.data.pid = p.id;
-    cb({ name: p.name, score: p.score, title: g.event.title, logo: g.event.logo || '', phase: g.phase });
-    // Phone dropped mid-question: resend it with the time that's left
-    if (g.phase === 'question' && !g.answers.has(p.id)) {
-      const q = g.event.questions[g.qIndex];
-      const total = q.time || g.event.timePerQuestion || 20;
-      const left = Math.max(1, Math.round(total - (Date.now() - g.qStart) / 1000));
-      socket.emit('question', { index: g.qIndex, total: g.event.questions.length, count: q.answers.length, time: left, q: q.q, answers: q.answers });
-    }
+    attach(g, p);
+    cb({ name: p.name, score: p.score, title: g.event.title, logo: g.event.logo || '', phase: g.phase,
+      answered: g.phase === 'question' && g.answers.has(p.id) });
+    catchUp(g, p);
   });
   socket.on('player:answer', ({ choice } = {}, cb = () => {}) => {
     const g = games.get(socket.data.pin); const p = g?.players.get(socket.data.pid);
     if (!p || g.phase !== 'question' || g.answers.has(p.id)) return cb({ error: 'Not accepting' });
     const q = g.event.questions[g.qIndex];
-    if (!(choice >= 0 && choice < q.answers.length)) return cb({ error: 'Bad choice' });
-    const time = (q.time || g.event.timePerQuestion || 20) * 1000;
+    if (!(Number.isInteger(choice) && choice >= 0 && choice < q.answers.length)) return cb({ error: 'Bad choice' });
+    const time = qTime(g, q) * 1000;
     const elapsed = Math.min(Date.now() - g.qStart, time);
     const correct = choice === q.correct;
     p.streak = correct ? p.streak + 1 : 0;
-    // Kahoot-style: up to 1000 pts, decaying to 500 at the buzzer, + small streak bonus
-    const points = correct ? Math.round(1000 * (1 - elapsed / time / 2)) + Math.min(p.streak - 1, 5) * 100 : 0;
+    if (correct) { p.bestStreak = Math.max(p.bestStreak || 0, p.streak); p.fastest = Math.min(p.fastest ?? Infinity, elapsed); }
+    // Kahoot-style: up to 1000 pts, decaying to 500 at the buzzer, + small streak bonus; x2 on double-points questions
+    const points = correct ? (Math.round(1000 * (1 - elapsed / time / 2)) + Math.min(p.streak - 1, 5) * 100) * (isDouble(g, g.qIndex) ? 2 : 1) : 0;
     p.score += points;
     g.answers.set(p.id, { choice, correct, points });
     cb({ ok: true });

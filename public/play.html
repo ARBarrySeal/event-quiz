@@ -38,6 +38,11 @@
   #s-result.good { background: #1f7a0a; } #s-result.bad { background: #b0142f; }
   .pts { font: 800 40px var(--mono); }
   .pill { background: rgba(0,0,0,.3); border-radius: 999px; padding: 8px 18px; font-weight: 700; }
+  .sub { font-size: 15px; opacity: .85; max-width: 320px; }
+  .namerow { display: flex; gap: 8px; } .namerow input { flex: 1; min-width: 0; }
+  .dice { flex: none; width: 52px; font-size: 24px; padding: 0; border-radius: 10px; border: 1px solid var(--line); background: #0e1311; cursor: pointer; }
+  .dbl { align-self: center; background: linear-gradient(90deg, #ffb800, #ff5e00); color: #000; font-weight: 800; padding: 4px 14px; border-radius: 999px; font-size: 14px; }
+  .award { background: linear-gradient(90deg, #ffb800, #ff5e00); color: #000; font-weight: 800; border-radius: 12px; padding: 10px 18px; }
   .spin { width: 48px; height: 48px; border-radius: 50%; border: 5px solid var(--line); border-top-color: var(--accent); animation: sp 1s linear infinite; }
   @keyframes sp { to { transform: rotate(360deg) } }
   @keyframes pop { from { transform: scale(.6); opacity: 0 } }
@@ -54,7 +59,8 @@
     <h2 id="evTitle">Join the game</h2>
     <div class="muted">Check in to play. Faster right answers score more.</div>
     <input id="pin" class="pinin" inputmode="numeric" pattern="\d{6}" maxlength="6" placeholder="PIN" required>
-    <input id="name" maxlength="24" placeholder="Screen name (shown on the big screen)" required autocomplete="nickname">
+    <div class="namerow"><input id="name" maxlength="24" placeholder="Screen name (shown on the big screen)" required autocomplete="nickname">
+      <button type="button" class="dice" id="dice" title="Random hacker name" aria-label="Random hacker name">🎲</button></div>
     <input id="email" type="email" maxlength="120" placeholder="Email" required autocomplete="email">
     <input id="phone" type="tel" maxlength="30" placeholder="Phone (optional)" autocomplete="tel">
     <input id="linkedin" maxlength="200" placeholder="LinkedIn URL or handle (optional)" autocapitalize="off">
@@ -78,6 +84,7 @@
 <!-- 3. question -->
 <section id="s-q" class="screen">
   <div class="qhead"><span id="qNum"></span><span class="t" id="qTime"></span></div>
+  <div class="dbl" id="qDbl" hidden>⚡ DOUBLE POINTS</div>
   <div class="qtext" id="qText"></div>
   <div class="answers" id="answers"></div>
 </section>
@@ -96,6 +103,8 @@
   <div class="pts" id="rPts"></div>
   <div class="pill" id="rStreak" hidden></div>
   <div class="pill" id="rRank"></div>
+  <div class="sub" id="rGap"></div>
+  <div class="sub" id="rPct"></div>
 </section>
 
 <!-- 6. final -->
@@ -103,6 +112,7 @@
   <div class="big pop" id="fIcon">🏁</div>
   <h1 id="fRank"></h1>
   <div class="pts" id="fScore"></div>
+  <div class="award" id="fAward" hidden></div>
   <div class="muted">Thanks for playing! Check the big screen for the winners.</div>
   <a data-sponsor style="margin-top:24px"></a>
 </section>
@@ -138,6 +148,18 @@ function enterGame(name, title, logo) {
   showLogo(logo);
 }
 
+// Random screen names (also keeps the big screen clean)
+const ADJ = ['Rogue', 'Stealthy', 'Quantum', 'Phantom', 'Binary', 'Crypto', 'Shadow', 'Turbo', 'Glitchy', 'Neon', 'Silent',
+  'Zero-Day', 'Elite', 'Packet', 'Root', 'Kernel', 'Cyber', 'Hex', 'Ghost', 'Sudo', 'Rapid', 'Lucky', 'Patched', 'Encrypted'];
+const NOUN = ['Packet', 'Penguin', 'Firewall', 'Hacker', 'Byte', 'Cipher', 'Daemon', 'Payload', 'Router', 'Rootkit', 'Proxy',
+  'Exploit', 'Botnet', 'Kernel', 'Script', 'Pixel', 'Falcon', 'Badger', 'Wombat', 'Ninja', 'Wizard', 'Otter', 'Tortoise', 'Gopher'];
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+$('dice').onclick = () => {
+  let n; do { n = `${pick(ADJ)} ${pick(NOUN)}`; } while (n.split(' ')[0] === n.split(' ')[1]);
+  $('name').value = (n + ' ' + Math.floor(Math.random() * 90 + 10)).slice(0, 24);
+};
+if (session) { $('waitTitle').textContent = 'Reconnecting…'; $('waitMsg').textContent = 'Getting you back into the game.'; show('s-wait'); }
+
 // Prefill PIN from the QR link, remember contact details on this phone
 const qsPin = new URLSearchParams(location.search).get('pin');
 if (qsPin) {
@@ -161,8 +183,9 @@ $('joinForm').addEventListener('submit', (e) => {
     if (r.error) return $('err').textContent = r.error;
     try { localStorage.setItem('eq-contact', JSON.stringify({ name: d.name, email: d.email, phone: d.phone, linkedin: d.linkedin })); } catch {}
     save({ pin: d.pin, playerId: r.playerId });
-    enterGame(r.name, r.title, r.logo); setScore(0);
-    $('waitTitle').textContent = "You're in!"; $('waitMsg').textContent = 'Look for your name on the big screen.';
+    enterGame(r.name, r.title, r.logo); setScore(r.score || 0);
+    $('waitTitle').textContent = r.resumed ? 'Welcome back!' : "You're in!";
+    $('waitMsg').textContent = r.resumed ? `You're playing as ${r.name}. Next question coming up…` : 'Look for your name on the big screen.';
     show('s-wait'); buzz(60);
   });
 });
@@ -174,8 +197,9 @@ socket.on('connect', () => {
     if (r.error) { if (!$('s-join').classList.contains('on')) { $('mText').textContent = 'Your session expired. Check in again to keep playing.'; show('s-msg'); } resetSessionSilently(); return; }
     enterGame(r.name, r.title, r.logo); setScore(r.score);
     if (r.phase === 'final') { $('fRank').textContent = 'Game over'; $('fScore').textContent = r.score.toLocaleString() + ' pts'; show('s-final'); }
+    else if (r.phase === 'question' && r.answered) show('s-sent');
     else if (r.phase !== 'question') { $('waitTitle').textContent = 'Back in the game'; $('waitMsg').textContent = 'Next question coming up…'; show('s-wait'); }
-    // phase 'question': server resends it right after this
+    // phase 'question', not answered yet: server resends the question right after this
   });
 });
 function resetSessionSilently() { try { sessionStorage.removeItem(KEY); localStorage.removeItem(KEY); } catch {} session = null; }
@@ -183,7 +207,7 @@ function resetSessionSilently() { try { sessionStorage.removeItem(KEY); localSto
 socket.on('question', (q) => {
   clearInterval(tick);
   $('qNum').textContent = `Question ${q.index + 1} of ${q.total}`;
-  $('qText').textContent = q.q;
+  $('qText').textContent = q.q; $('qDbl').hidden = !q.double;
   const box = $('answers'); box.className = 'answers' + (q.count === 2 ? ' n2' : '');
   box.innerHTML = q.answers.map((a, i) =>
     `<button class="ans" data-i="${i}" style="background:${COLORS[i]}">${SHAPES[i]}<span>${esc(a)}</span></button>`).join('');
@@ -210,7 +234,14 @@ socket.on('result', (r) => {
   $('rPts').textContent = r.correct ? '+' + r.points.toLocaleString() : '+0';
   $('rStreak').hidden = !(r.correct && r.streak > 1);
   $('rStreak').textContent = `🔥 Answer streak: ${r.streak}`;
-  $('rRank').textContent = `You're in ${ord(r.rank)} place of ${r.of}`;
+  const mv = r.moved > 0 ? ` · ▲ up ${r.moved}` : r.moved < 0 ? ` · ▼ down ${-r.moved}` : '';
+  $('rRank').textContent = `${ord(r.rank)} of ${r.of}${mv}`;
+  $('rGap').textContent = r.behind ? `${r.behind.gap.toLocaleString()} pts behind ${r.behind.name}`
+    : r.leadBy != null ? `You're in the lead by ${r.leadBy.toLocaleString()} pts!` : (r.rank === 1 ? "You're in the lead!" : '');
+  $('rPct').textContent = r.answered ? (r.correct
+    ? (r.pct <= 25 ? `Only ${r.pct}% got that right. Nice!` : `${r.pct}% got it right`)
+    : `${r.pct}% got it right`) : '';
+  if (r.correct && r.double) $('rPts').textContent += ' (2×)';
   // re-trigger the pop animation
   $('rIcon').classList.remove('pop'); void $('rIcon').offsetWidth; $('rIcon').classList.add('pop');
   show('s-result'); buzz(r.correct ? [60, 40, 60] : 200);
@@ -221,6 +252,7 @@ socket.on('final', (f) => {
   $('fIcon').textContent = ['🏆', '🥈', '🥉'][f.rank - 1] || '🏁';
   $('fRank').textContent = `You finished ${ord(f.rank)} of ${f.of}`;
   $('fScore').textContent = f.score.toLocaleString() + ' pts';
+  $('fAward').hidden = !f.award; $('fAward').textContent = f.award ? `You won a bonus prize: ${f.award}!` : '';
   show('s-final'); resetSessionSilently();
 });
 

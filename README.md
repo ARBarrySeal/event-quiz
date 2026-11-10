@@ -22,15 +22,25 @@ npm run sim                              # simulate 120 players (needs the serve
 {
   "title": "My Event",
   "timePerQuestion": 20,
+  "doubleLast": 3,
   "questions": [
-    { "q": "Question text?", "answers": ["A", "B", "C", "D"], "correct": 0, "time": 15 }
+    { "q": "Question text?", "answers": ["A", "B", "C", "D"], "correct": 0, "time": 15, "fact": "Shown after the answer" }
   ]
 }
 ```
 
 `correct` is the zero-based index of the right answer. `time` (in seconds) is optional and overrides the default for that question.
 Optional `"logo": "/logos/file.png"` shows an image from `public/logos/` on the lobby, scoreboard, podium and player check-in screens.
+Optional `doubleLast` (0-10) gives double points on the last N questions. Optional `fact` (200 chars) is shown on the big screen after the answer is revealed.
 Only `events/sample-*.json` files are committed. Keep live question sets private so players can't look up the answers.
+
+## Game features
+
+- **Host screen sound**: lobby music, question music, countdown ticks, reveal sting, drumroll + fanfare for the podium. All synthesized in the browser (`public/sfx.js`), no audio files. 🔊 button or the M key mutes.
+- **Remove a player**: click a name twice in the lobby, or ✕ twice on the scoreboard. Their email can't rejoin that game.
+- **Name filter** (`names.js`) blocks common profanity and slurs, including leetspeak. Players can tap 🎲 for a random hacker name.
+- **Reconnects**: a refreshed host screen returns to the current question, reveal or results. A phone that rejoins (or checks in again with the same email) keeps its score. Late joiners get the current question.
+- **Engagement**: % who got it right, fun facts, rank arrows on the scoreboard, "X pts behind NAME" on phones, double-points questions, and bonus prizes for players outside the top 3 (longest streak, biggest climber, fastest correct answer).
 
 ## Deploy (Cloud Run)
 
