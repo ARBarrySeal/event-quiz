@@ -115,6 +115,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const socket = io({ transports: ['websocket', 'polling'] });
+handleIdle(socket);
 const KEY = 'eq-session';
 let session = null, tick = null, score = 0;
 try { session = JSON.parse(sessionStorage.getItem(KEY) || localStorage.getItem(KEY) || 'null'); } catch {}

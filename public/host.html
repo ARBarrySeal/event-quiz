@@ -115,6 +115,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const socket = io();
+handleIdle(socket);
 let key = '', pin = '', total = 0, current = null, timerInt = null, lastReveal = null;
 const show = (id) => document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id));
 const store = (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch {} };

@@ -25,6 +25,7 @@ app.set('trust proxy', true);   // Cloud Run terminates HTTPS; makes QR links ht
 const server = http.createServer(app);
 const io = new Server(server, { pingInterval: 10000, pingTimeout: 20000 });
 app.use(express.json({ limit: '1mb' }));
+app.get('/', (_, res) => res.redirect('/host.html'));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- helpers ----------
@@ -149,7 +150,24 @@ const lobbyUpdate = (g) => io.to(g.pin + ':host').emit('lobby', {
   count: g.players.size, names: [...g.players.values()].slice(-60).map(p => p.name) });
 
 // ---------- sockets ----------
+// ---------- idle shutoff ----------
+// Open pages keep sockets open, and open sockets keep Cloud Run running (and billing). After IDLE_HOURS with
+// no real game activity, tell every page to disconnect without reconnecting so the service can scale to zero.
+// Automatic reconnects (host:rejoin / player:rejoin) don't count as activity.
+const IDLE_MS = (+process.env.IDLE_HOURS || 3) * 3600e3;
+const ACTIVITY = new Set(['host:create', 'host:next', 'host:kick', 'player:join', 'player:answer']);
+let lastActivity = Date.now(), idled = false;
+setInterval(() => {
+  if (idled || Date.now() - lastActivity < IDLE_MS || io.engine.clientsCount === 0) return;
+  console.log(`idle ${IDLE_MS / 3600e3}h: disconnecting ${io.engine.clientsCount} connection(s)`);
+  idled = true; io.emit('idle');
+  setTimeout(() => io.disconnectSockets(true), 2000);
+}, Math.min(60e3, IDLE_MS / 4)).unref();
+
 io.on('connection', (socket) => {
+  if (idled) { idled = false; lastActivity = Date.now(); }   // someone reloaded after a shutoff
+  socket.onAny((ev) => { if (ACTIVITY.has(ev)) lastActivity = Date.now(); });
+
   // HOST
   socket.on('host:create', ({ key, eventId } = {}, cb = () => {}) => {
     if (!isHost(key)) return cb({ error: 'Wrong host key' });
