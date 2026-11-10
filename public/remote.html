@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#040806">
+<meta name="robots" content="noindex">
+<title>Event Quiz · Host remote</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  [hidden] { display: none !important; }
+  html, body { height: 100%; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+  body { display: flex; flex-direction: column; min-height: 100dvh; }
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 16px; padding-top: max(10px, env(safe-area-inset-top));
+    background: var(--panel); border-bottom: 1px solid var(--line); font: 800 13px var(--mono); letter-spacing: .08em; }
+  .top .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); margin-right: 8px; }
+  .top .dot.off { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+  .top .pin { color: var(--accent); }
+  .status { padding: 10px 16px; font: 800 15px var(--mono); color: #02140a; background: var(--accent); text-align: center; }
+  .status.wait { background: #1b2a22; color: var(--text); }
+  .status.onair { background: var(--danger); color: #fff; }
+  main { flex: 1; overflow-y: auto; padding: 14px 14px 20px; display: grid; gap: 14px; align-content: start; grid-auto-rows: max-content; }
+  .center { place-content: center; text-align: center; }
+  .card { position: relative; overflow: hidden; background: linear-gradient(180deg, #111e17, #08100c); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; }
+  .card h2 { margin: 0; font: 800 18px var(--mono); color: var(--accent); }
+  .muted { color: var(--muted); font-size: 14px; }
+  .qc.now { border-color: var(--accent); box-shadow: 0 0 22px rgba(57, 255, 136, .18); }
+  .lab { font: 800 12px var(--mono); letter-spacing: .1em; color: var(--muted); text-transform: uppercase; }
+  .qc.now .lab { color: var(--accent); }
+  .lab i { font-style: normal; color: var(--amber); }
+  .qt { font-size: 19px; font-weight: 700; line-height: 1.3; }
+  .as { display: grid; gap: 7px; }
+  .an { display: flex; align-items: center; gap: 10px; padding: 7px 10px 7px 7px; border-radius: 10px; background: rgba(255, 255, 255, .04); border: 1px solid transparent; font-size: 16px; }
+  .an .key { font-size: 15px; }
+  .an span:nth-child(2) { flex: 1; }
+  .an em { font: 800 14px var(--mono); font-style: normal; color: var(--muted); }
+  .an.ok { border-color: var(--accent); background: rgba(57, 255, 136, .12); font-weight: 700; }
+  .an.ok em { color: var(--accent); }
+  .ft { font-size: 15px; line-height: 1.4; border-left: 3px solid var(--accent); padding: 2px 0 2px 10px; color: #cfe9d8; }
+  .res { font: 800 15px var(--mono); color: var(--accent); }
+  .win { display: flex; justify-content: space-between; gap: 10px; font-size: 18px; font-weight: 700; }
+  .win b { font-family: var(--mono); color: var(--accent); }
+  .game { text-align: left; display: grid; gap: 2px; }
+  .game small { color: var(--muted); font: 500 13px var(--mono); }
+  footer { position: sticky; bottom: 0; padding: 12px 14px; padding-bottom: max(12px, env(safe-area-inset-bottom)); background: #040806f2; border-top: 1px solid var(--line); display: grid; gap: 10px; }
+  .live { text-align: center; font: 800 34px var(--mono); color: var(--accent); }
+  .live.low { color: var(--danger); }
+  .live small { display: block; font: 500 14px var(--mono); color: var(--muted); }
+  #pri { width: 100%; min-height: 76px; font-size: 22px; border-radius: 14px; }
+  #sec { width: 100%; min-height: 48px; font-size: 16px; }
+  #sec.arm { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .linkbtn { background: none; border: 0; color: var(--muted); font: 500 13px var(--sans); text-decoration: underline; padding: 6px; }
+</style>
+</head>
+<body>
+<div class="top" id="top" hidden><span><i class="dot" id="dot"></i>HOST REMOTE</span><span class="pin" id="tPin"></span></div>
+<div class="status" id="status" hidden></div>
+
+<!-- 1. sign in -->
+<main id="s-login" class="center">
+  <form class="card" id="loginForm">
+    <h2>&gt; host remote</h2>
+    <div class="muted">Run the game from your phone. First create the game on the big screen, then sign in here with the host password.</div>
+    <input id="key" type="password" placeholder="Host password" autocomplete="current-password" required>
+    <button class="btn" type="submit" id="go">Connect</button>
+    <div class="err" id="err"></div>
+  </form>
+</main>
+
+<!-- 2. more than one game is open: pick one -->
+<main id="s-pick" hidden>
+  <div class="card"><h2>&gt; which game?</h2><div class="muted">More than one game is open. Match the PIN on the big screen.</div><div id="games" style="display:grid;gap:8px"></div></div>
+</main>
+
+<!-- 3. signed in but nothing to control -->
+<main id="s-none" class="center" hidden>
+  <div class="card"><h2>&gt; no game yet</h2><div class="muted" id="noneMsg"></div><button class="btn" id="retry">Try again</button></div>
+</main>
+
+<!-- 4. the remote -->
+<main id="s-main" hidden></main>
+<footer id="foot" hidden>
+  <div class="live" id="live" hidden></div>
+  <button class="btn ghost" id="sec" hidden></button>
+  <button class="btn" id="pri"></button>
+  <button class="linkbtn" id="out">Sign out of the remote</button>
+</footer>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/common.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const socket = io({ transports: ['websocket', 'polling'] });
+handleIdle(socket);
+const store = (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch {} };
+const load = (k) => { try { return sessionStorage.getItem(k); } catch { return null; } };
+const fmt = (n) => Number(n).toLocaleString();
+const buzz = (ms) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
+const pinFmt = (p) => String(p).replace(/(\d{3})(\d{3})/, '$1 $2');
+let key = load('hostKey') || '', pin = load('remotePin') || '', st = null, tick = null, left = 0, lockUntil = 0, armTimer = null, lastMain = '';
+
+function screen(id) {
+  ['s-login', 's-pick', 's-none', 's-main'].forEach(s => $(s).hidden = s !== id);
+  const main = id === 's-main';
+  $('foot').hidden = $('top').hidden = $('status').hidden = !main;
+}
+
+// ---- sign in / attach to a game ----
+function join(p) {
+  socket.emit('remote:join', { key, pin: p || '' }, (r) => {
+    $('go').disabled = false;
+    if (r.error) {
+      if (/password/i.test(r.error)) { key = ''; store('hostKey', null); $('err').textContent = r.error; return screen('s-login'); }
+      $('noneMsg').textContent = r.error; return screen('s-none');
+    }
+    store('hostKey', key);
+    if (r.games) {
+      $('games').innerHTML = r.games.map(g => `<button class="btn ghost game" data-pin="${esc(g.pin)}"><span>PIN ${esc(pinFmt(g.pin))} · ${esc(g.title)}</span>
+        <small>${g.players} player${g.players === 1 ? '' : 's'} · ${g.phase === 'lobby' ? 'in the lobby' : 'on question ' + (g.qIndex + 1)}</small></button>`).join('');
+      return screen('s-pick');
+    }
+    pin = r.state.pin; store('remotePin', pin);
+    screen('s-main'); paint(r.state); keepAwake();
+  });
+}
+$('loginForm').addEventListener('submit', (e) => {
+  e.preventDefault(); $('err').textContent = ''; key = $('key').value; $('go').disabled = true; join('');
+});
+$('games').onclick = (e) => { const b = e.target.closest('[data-pin]'); if (b) join(b.dataset.pin); };
+$('retry').onclick = () => join('');
+$('out').onclick = () => { store('hostKey', null); store('remotePin', null); location.reload(); };
+// First load with a saved password, and every reconnect (Wi-Fi blip, phone was locked): attach again.
+socket.on('connect', () => { $('dot').classList.remove('off'); if (key) join(pin); });
+socket.on('disconnect', () => $('dot').classList.add('off'));
+socket.on('remote:state', (s) => { if (s.pin === pin) paint(s); });
+
+// Keep the phone awake while it is the remote.
+let wake = null;
+async function keepAwake() {
+  try {
+    if (wake || !navigator.wakeLock || document.visibilityState !== 'visible') return;
+    wake = await navigator.wakeLock.request('screen');
+    wake.addEventListener('release', () => { wake = null; });
+  } catch {}
+}
+document.addEventListener('visibilitychange', () => { if (st) keepAwake(); });
+
+// ---- the remote itself ----
+// A question card. Only this phone gets the right answer and the fun fact before they are shown on the big screen.
+function qCard(q, label, now, result) {
+  return `<div class="card qc ${now ? 'now' : ''}">
+    <div class="lab">${label} · ${q.time}s${q.double ? ' · <i>⚡ double points</i>' : ''}</div>
+    <div class="qt">${esc(q.q)}</div>
+    <div class="as">${q.answers.map((a, i) => `<div class="an ${i === q.correct ? 'ok' : ''}"><span class="key" style="--k:${COLORS[i]}">${'ABCD'[i]}</span><span>${esc(a)}</span>
+      <em>${result ? result.counts[i] : ''}${i === q.correct ? ' ✔' : ''}</em></div>`).join('')}</div>
+    ${result ? `<div class="res">${result.pct}% got it right${result.leader ? ` · leader: ${esc(result.leader.name)} ${fmt(result.leader.score)}` : ''}</div>` : ''}
+    ${q.fact ? `<div class="ft">💡 ${esc(q.fact)}</div>` : ''}
+  </div>`;
+}
+function paint(s) {
+  const changed = !st || st.phase !== s.phase || st.board !== s.board || st.qIndex !== s.qIndex;
+  st = s;
+  // After the big screen changes, ignore taps for a moment so a double tap can't also press the next button.
+  if (changed) { lockUntil = Date.now() + 900; disarm(); buzz(25); }
+  $('tPin').textContent = 'PIN ' + pinFmt(s.pin);
+  const n = s.qIndex + 1, last = !s.next, who = `${s.players} player${s.players === 1 ? '' : 's'}`;
+  const cur = s.current ? qCard(s.current, `${s.phase === 'question' ? 'Live now' : 'Just asked'} · Q${n} of ${s.total}`, s.phase === 'question' || !s.board, s.result) : '';
+  const nxt = s.next ? qCard(s.next, `${s.phase === 'lobby' ? 'First up' : 'Up next'} · Q${s.next.index + 1} of ${s.total}`, s.phase === 'lobby' || s.board, null)
+    : s.phase !== 'final' ? '<div class="card"><div class="lab">Up next</div><div class="qt">That was the last question. Final results are next.</div></div>' : '';
+  const status = $('status'), pri = $('pri'), sec = $('sec');
+  let main = '';
+  status.className = 'status'; pri.hidden = false; pri.disabled = false; sec.hidden = true; $('live').hidden = true;
+  clearInterval(tick);
+  if (s.phase === 'lobby') {
+    status.textContent = `Big screen: lobby · ${who} checked in`; status.classList.add('wait');
+    main = nxt;
+    setBtn(pri, 'START GAME ▶', 'advance');
+  } else if (s.phase === 'question') {
+    status.textContent = `Big screen: question ${n} of ${s.total} is LIVE`; status.classList.add('onair');
+    main = cur + nxt;
+    pri.hidden = true; $('live').hidden = false;
+    left = s.left;
+    const tickPaint = () => { $('live').innerHTML = `${left}s<small>${s.answered} of ${who} answered</small>`; $('live').classList.toggle('low', left <= 5); };
+    tickPaint(); tick = setInterval(() => { left = Math.max(0, left - 1); tickPaint(); }, 1000);
+    sec.hidden = false; setBtn(sec, 'End question now', 'reveal', true);
+  } else if (s.phase === 'reveal' && !s.board) {
+    status.textContent = `Big screen: answer to question ${n} is showing`;
+    main = cur + nxt;
+    setBtn(pri, 'SHOW SCOREBOARD', 'board');
+    sec.hidden = false; setBtn(sec, last ? 'Skip scoreboard, go to final results' : 'Skip scoreboard, ask next question', 'advance', true);
+  } else if (s.phase === 'reveal') {
+    status.textContent = `Big screen: scoreboard after question ${n}`;
+    main = nxt + cur;
+    setBtn(pri, last ? 'FINAL RESULTS 🏆' : `ASK QUESTION ${n + 1} ▶`, 'advance');
+  } else {
+    status.textContent = 'Big screen: final results'; status.classList.add('wait');
+    main = `<div class="card"><h2>&gt; game over</h2>${(s.winners || []).map(w => `<div class="win"><span>${w.rank}. ${esc(w.name)}</span><b>${fmt(w.score)}</b></div>`).join('')}
+      <div class="muted">To play again, create a new game on the big screen, then tap below.</div></div>`;
+    setBtn(pri, 'Connect to the new game', 'rejoin');
+  }
+  // Answers arriving repaint this many times a second: only touch the page when something really changed.
+  if (main !== lastMain) { $('s-main').innerHTML = main; lastMain = main; }
+  if (changed) $('s-main').scrollTop = 0;
+}
+// twoTap = the first tap turns the button red, the second one within 3 seconds does it.
+function setBtn(b, label, act, twoTap) {
+  if (b.dataset.act === act && b.dataset.label === label) return;   // same button as before: keep it as is (it may be waiting for its second tap)
+  b.textContent = label; b.dataset.act = act; b.dataset.label = label; b.dataset.two = twoTap ? 1 : ''; b.classList.remove('arm');
+}
+function disarm() { clearTimeout(armTimer); const s = $('sec'); s.classList.remove('arm'); if (s.dataset.label) s.textContent = s.dataset.label; }
+function press(e) {
+  const b = e.currentTarget;
+  if (!st || Date.now() < lockUntil) return;
+  if (b.dataset.act === 'rejoin') { pin = ''; store('remotePin', null); return join(''); }
+  if (b.dataset.two && !b.classList.contains('arm')) {
+    b.classList.add('arm'); b.textContent = 'Tap again to confirm'; buzz(20);
+    armTimer = setTimeout(disarm, 3000); return;
+  }
+  disarm(); lockUntil = Date.now() + 1500; buzz(40);
+  socket.emit('host:next', { act: b.dataset.act, q: st.qIndex });
+}
+$('pri').onclick = press; $('sec').onclick = press;
+
+if (!key) screen('s-login'); else { $('noneMsg').textContent = 'Connecting…'; screen('s-none'); }
+</script>
+</body>
+</html>

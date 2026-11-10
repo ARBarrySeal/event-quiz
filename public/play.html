@@ -10,14 +10,18 @@
 <style>
   [hidden] { display: none !important; }
   html, body { height: 100%; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
-  body { display: flex; flex-direction: column; min-height: 100dvh; }
+  body { display: flex; flex-direction: column; min-height: 100dvh; background-size: 32px 32px;
+    background-image: linear-gradient(rgba(57, 255, 136, .045) 1px, transparent 1px), linear-gradient(90deg, rgba(57, 255, 136, .045) 1px, transparent 1px); }
   .top { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;
-    padding-top: max(12px, env(safe-area-inset-top)); background: var(--panel); border-bottom: 1px solid var(--line); font-weight: 700; }
-  .top .sc { font-family: var(--mono); color: var(--accent); }
+    padding-top: max(12px, env(safe-area-inset-top)); background: var(--panel); border-bottom: 1px solid var(--line); font-weight: 700;
+    box-shadow: 0 1px 0 rgba(57, 255, 136, .25); }
+  .top .sc { font: 800 18px var(--mono); color: var(--accent); text-shadow: 0 0 12px rgba(57, 255, 136, .6); }
   .screen { display: none; flex: 1; flex-direction: column; padding: 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); gap: 14px; }
   .screen.on { display: flex; }
   .center { align-items: center; justify-content: center; text-align: center; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; width: min(440px, 100%); display: grid; gap: 12px; margin: auto; }
+  .card { position: relative; overflow: hidden; background: linear-gradient(180deg, #111e17, #08100c); border: 1px solid var(--line); border-radius: 16px; padding: 20px;
+    width: min(440px, 100%); display: grid; gap: 12px; margin: auto; box-shadow: 0 12px 40px rgba(0, 0, 0, .5); }
+  .card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: linear-gradient(90deg, transparent, var(--accent), transparent); }
   h1, h2 { margin: 0; } .muted { color: var(--muted); font-size: 14px; }
   label.chk { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--muted); text-align: left; }
   label.chk input { width: 22px; height: 22px; flex: none; margin: 0; }
@@ -25,17 +29,20 @@
   .big { font-size: 72px; line-height: 1; }
   /* answer buttons */
   .qhead { display: flex; justify-content: space-between; align-items: center; font-weight: 700; color: var(--muted); }
-  .qhead .t { font: 800 22px var(--mono); color: var(--text); background: var(--panel); border-radius: 999px; padding: 4px 14px; }
+  .qhead .t { font: 800 22px var(--mono); color: var(--accent); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 4px 14px; }
+  .qhead .t.low { color: #fff; background: var(--danger); border-color: var(--danger); }
   .qtext { font-size: 18px; font-weight: 700; text-align: center; }
   .answers { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .answers.n2 { grid-template-columns: 1fr; }
-  .ans { border: 0; border-radius: 14px; color: #fff; font-size: 17px; font-weight: 700; padding: 12px;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 110px; cursor: pointer; }
-  .ans .shape { width: 44px; height: 44px; }
+  .ans { border: 0; border-radius: 14px; color: #fff; font: 700 17px var(--sans); padding: 12px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 110px; cursor: pointer;
+    background: var(--k); background: linear-gradient(160deg, var(--k), color-mix(in srgb, var(--k) 70%, #000));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), inset 0 -4px 0 rgba(0, 0, 0, .22), 0 6px 16px rgba(0, 0, 0, .4); text-shadow: 0 1px 2px rgba(0, 0, 0, .35); }
+  .ans .key { width: 46px; height: 46px; font-size: 26px; border-radius: 12px; background: rgba(0, 0, 0, .28); }
   .ans:active { transform: scale(.97); filter: brightness(1.15); }
   .answers.locked .ans { pointer-events: none; }
   /* result */
-  #s-result.good { background: #1f7a0a; } #s-result.bad { background: #b0142f; }
+  #s-result.good { background: radial-gradient(circle at 50% 35%, #2bb673, #0b5229 75%); } #s-result.bad { background: radial-gradient(circle at 50% 35%, #d6304f, #650a1d 75%); }
   .pts { font: 800 40px var(--mono); }
   .pill { background: rgba(0,0,0,.3); border-radius: 999px; padding: 8px 18px; font-weight: 700; }
   .sub { font-size: 15px; opacity: .85; max-width: 320px; }
@@ -210,9 +217,9 @@ socket.on('question', (q) => {
   $('qText').textContent = q.q; $('qDbl').hidden = !q.double;
   const box = $('answers'); box.className = 'answers' + (q.count === 2 ? ' n2' : '');
   box.innerHTML = q.answers.map((a, i) =>
-    `<button class="ans" data-i="${i}" style="background:${COLORS[i]}">${SHAPES[i]}<span>${esc(a)}</span></button>`).join('');
-  let left = q.time; $('qTime').textContent = left;
-  tick = setInterval(() => { left = Math.max(0, left - 1); $('qTime').textContent = left; if (!left) clearInterval(tick); }, 1000);
+    `<button class="ans" data-i="${i}" style="--k:${COLORS[i]}">${KEYS[i]}<span>${esc(a)}</span></button>`).join('');
+  let left = q.time; $('qTime').textContent = left; $('qTime').classList.toggle('low', left <= 5);
+  tick = setInterval(() => { left = Math.max(0, left - 1); $('qTime').textContent = left; $('qTime').classList.toggle('low', left <= 5); if (!left) clearInterval(tick); }, 1000);
   show('s-q'); buzz(40);
 });
 

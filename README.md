@@ -29,6 +29,7 @@ npm run sim                              # simulate 120 players (needs the serve
 }
 ```
 
+Optional per question: `"image": "/media/file.jpg"` (a picture, GIF or short MP4/WebM uploaded in the editor, shown on the big screen only) and `"credit"` (photo credit shown in its corner).
 `correct` is the zero-based index of the right answer. `time` (in seconds) is optional and overrides the default for that question.
 Optional `"logo": "/logos/file.png"` shows an image from `public/logos/` on the lobby, scoreboard, podium and player check-in screens.
 Optional `doubleLast` (0-10) gives double points on the last N questions. Optional `fact` (200 chars) is shown on the big screen after the answer is revealed.
@@ -36,6 +37,9 @@ Only `events/sample-*.json` files are committed. Keep live question sets private
 
 ## Game features
 
+- **Phone remote for the host** (`/remote.html`, same host password): shows the next question with its right answer and fun fact privately, and has one big button to start the game, show the scoreboard and ask the next question. Create the game on the big screen first. The big-screen buttons keep working too.
+- **Big-screen effects** (`public/fx.js`): falling code, a radar that pings as answers arrive, a red alarm in the last 5 seconds, a burst on the answer and confetti on the podium. All drawn in the browser. The ✨ button or the B key turns them off on a slow laptop.
+- **Question pictures**: add one per question in the editor. Files are stored in `EVENTS_DIR/media` (override with `MEDIA_DIR`), so they stay private with the question sets. Pick pictures that do not give away the answer.
 - **Host screen sound**: lobby music, question music, countdown ticks, reveal sting, drumroll + fanfare for the podium. All synthesized in the browser (`public/sfx.js`), no audio files. 🔊 button or the M key mutes.
 - **Remove a player**: click a name twice in the lobby, or ✕ twice on the scoreboard. Their email can't rejoin that game.
 - **Name filter** (`names.js`) blocks common profanity and slurs, including leetspeak. Players can tap 🎲 for a random hacker name.

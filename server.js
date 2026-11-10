@@ -18,6 +18,9 @@ if (process.env.K_SERVICE && (!process.env.HOST_KEY || HOST_KEY.length < 12)) {
 const PUBLIC_URL = process.env.PUBLIC_URL || '';                // e.g. https://quiz-xyz.run.app
 const EVENTS_DIR = process.env.EVENTS_DIR || path.join(__dirname, 'events');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+// Question pictures live beside the question sets (private, never in the public repo).
+const MEDIA_DIR = process.env.MEDIA_DIR || path.join(EVENTS_DIR, 'media');
+const MEDIA_RE = /^\/media\/[\w-]{1,60}\.(png|jpe?g|webp|gif|mp4|webm)$/i;
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const leads = createLeadSync({ dataDir: DATA_DIR });
 
@@ -27,6 +30,7 @@ const server = http.createServer(app);
 const io = new Server(server, { pingInterval: 10000, pingTimeout: 20000 });
 app.use(express.json({ limit: '1mb' }));
 app.get('/', (_, res) => res.redirect('/host.html'));
+app.use('/media', express.static(MEDIA_DIR, { index: false, maxAge: '1h', setHeaders: (res) => res.set('X-Content-Type-Options', 'nosniff') }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- helpers ----------
@@ -65,6 +69,13 @@ function validateEvent(e) {
     if (!(Number.isInteger(q.correct) && q.correct >= 0 && q.correct < answers.length)) throw new Error(`${n} has no correct answer marked`);
     const out = { q: text, answers, correct: q.correct };
     if (clean(q.fact, 200)) out.fact = clean(q.fact, 200);   // fun fact shown on the big screen after the answer
+    // Optional picture or short video for the big screen: only files uploaded in the editor, never an outside URL.
+    const image = clean(q.image, 120);
+    if (image) {
+      if (!MEDIA_RE.test(image)) throw new Error(`${n} picture must be a file uploaded in the editor`);
+      out.image = image;
+      if (clean(q.credit, 140)) out.credit = clean(q.credit, 140);
+    }
     if (q.time != null && q.time !== '') {
       const t = Number(q.time);
       if (!(t >= 5 && t <= 120)) throw new Error(`${n} time must be 5-120 seconds`);
@@ -108,12 +119,33 @@ function rankAll(g) {
 const leaderboard = (list, n = 5) => list.slice(0, n).map(p => ({ name: p.name, score: p.score, rank: p.rank, moved: p.moved || 0 }));
 const qTime = (g, q) => q.time || g.event.timePerQuestion || 20;
 const isDouble = (g, i) => i >= g.event.questions.length - (g.event.doubleLast || 0);
+const imageOf = (g, i) => g.event.questions[i]?.image || '';
 // Current question as players/host see it, with the seconds left (full time when just sent).
-function questionPayload(g) {
+// Only the big screen gets the picture: its file name could hint at the answer, and phones don't show it.
+function questionPayload(g, forHost) {
   const q = g.event.questions[g.qIndex], total = qTime(g, q);
   const time = Math.max(1, Math.round(total - (Date.now() - g.qStart) / 1000));
-  return { index: g.qIndex, total: g.event.questions.length, count: q.answers.length, time, q: q.q, answers: q.answers, double: isDouble(g, g.qIndex) };
+  const pub = { index: g.qIndex, total: g.event.questions.length, count: q.answers.length, time, limit: total, q: q.q, answers: q.answers, double: isDouble(g, g.qIndex) };
+  return forHost ? { ...pub, image: q.image || '', credit: q.credit || '' } : pub;
 }
+
+// ---------- host phone remote ----------
+// Private view for the host's phone: what the big screen is showing, plus the next question with its answer and fun fact.
+function remoteState(g) {
+  const qs = g.event.questions;
+  const peek = (i) => { const q = qs[i]; return q ? { index: i, q: q.q, answers: q.answers, correct: q.correct, fact: q.fact || '', time: qTime(g, q), double: isDouble(g, i) } : null; };
+  const r = g.phase === 'reveal' ? g.lastReveal : null;
+  return { pin: g.pin, title: g.event.title, phase: g.phase, board: !!g.board, qIndex: g.qIndex, total: qs.length, players: g.players.size,
+    answered: g.phase === 'question' ? g.answers.size : r ? r.answered : 0,
+    left: g.phase === 'question' ? Math.max(0, Math.round(qTime(g, qs[g.qIndex]) - (Date.now() - g.qStart) / 1000)) : 0,
+    current: g.phase === 'question' || g.phase === 'reveal' ? peek(g.qIndex) : null,
+    next: g.phase === 'final' ? null : peek(g.qIndex + 1),
+    result: r ? { pct: r.pct, counts: r.counts, leader: r.leaderboard[0] || null } : null,
+    winners: g.phase === 'final' ? g.finalData.podium.slice(0, 3) : null };
+}
+const remoteRoom = (g) => g.pin + ':remote';
+const remoteCount = (g) => io.sockets.adapter.rooms.get(remoteRoom(g))?.size || 0;
+const pushRemote = (g) => { if (remoteCount(g)) io.to(remoteRoom(g)).emit('remote:state', remoteState(g)); };
 
 let regWrites = Promise.resolve();
 function saveRegistration(g, p) {
@@ -128,12 +160,12 @@ function saveRegistration(g, p) {
 
 // ---------- game flow ----------
 function sendQuestion(g) {
-  g.phase = 'question'; g.answers = new Map(); g.qStart = Date.now();
-  const pub = questionPayload(g);
-  io.to(g.pin + ':host').emit('question', pub);
-  io.to(g.pin + ':players').emit('question', pub);
+  g.phase = 'question'; g.board = false; g.answers = new Map(); g.qStart = Date.now();
+  io.to(g.pin + ':host').emit('question', questionPayload(g, true));
+  io.to(g.pin + ':players').emit('question', questionPayload(g));
   clearTimeout(g.timer);
   g.timer = setTimeout(() => reveal(g), qTime(g, g.event.questions[g.qIndex]) * 1000 + 500);
+  pushRemote(g);
 }
 
 function reveal(g) {
@@ -162,9 +194,10 @@ function reveal(g) {
       leadBy: p.rank === 1 && next ? p.score - next.score : null });
   });
   g.lastReveal = { q: g.qIndex, correct: q.correct, counts, answered: g.answers.size, pct, fact: q.fact || '',
-    leaderboard: leaderboard(list), last: g.qIndex === g.event.questions.length - 1 };
+    leaderboard: leaderboard(list), last: g.qIndex === g.event.questions.length - 1, nextImage: imageOf(g, g.qIndex + 1) };
   io.to(g.pin + ':host').emit('reveal', g.lastReveal);
   list.forEach(p => { p.prevRank = p.rank; });
+  pushRemote(g);
 }
 
 // Bonus prizes so more people win than the top 3. Each goes to the best player outside the podium
@@ -194,10 +227,13 @@ function finish(g) {
   g.finalData = { podium: leaderboard(list, 10), awards: bonus };
   io.to(g.pin + ':host').emit('final', g.finalData);
   list.forEach(p => io.to(p.id).emit('final', { rank: p.rank, of: list.length, score: p.score, award: p.award || '' }));
+  pushRemote(g);
 }
 
-const lobbyUpdate = (g) => io.to(g.pin + ':host').emit('lobby', {
-  count: g.players.size, names: [...g.players.values()].slice(-60).map(p => p.name) });
+const lobbyUpdate = (g) => {
+  io.to(g.pin + ':host').emit('lobby', { count: g.players.size, names: [...g.players.values()].slice(-60).map(p => p.name) });
+  pushRemote(g);
+};
 
 // ---------- sockets ----------
 // ---------- idle shutoff ----------
@@ -223,35 +259,62 @@ io.on('connection', (socket) => {
     if (!isHost(key)) return cb({ error: 'Wrong host key' });
     let event; try { event = loadEvent(eventId); } catch (e) { return cb({ error: e.message }); }
     const pin = newPin();
-    const g = { pin, eventId, event, players: new Map(), phase: 'lobby', qIndex: -1, answers: new Map(), banned: new Set() };
+    const g = { pin, eventId, event, created: Date.now(), players: new Map(), phase: 'lobby', qIndex: -1, answers: new Map(), banned: new Set() };
     games.set(pin, g);
     socket.join(pin + ':host'); socket.data.hostPin = pin;
-    cb({ pin, title: event.title, logo: event.logo || '', total: event.questions.length, phase: 'lobby', qIndex: -1 });
+    cb({ pin, title: event.title, subtitle: event.subtitle || '', logo: event.logo || '', total: event.questions.length, phase: 'lobby', qIndex: -1, preload: imageOf(g, 0) });
   });
   socket.on('host:rejoin', ({ key, pin } = {}, cb = () => {}) => {
     const g = games.get(pin);
     if (!isHost(key) || !g) return cb({ error: 'Game not found' });
     socket.join(pin + ':host'); socket.data.hostPin = pin;
-    cb({ pin, title: g.event.title, logo: g.event.logo || '', total: g.event.questions.length, phase: g.phase, qIndex: g.qIndex });
+    cb({ pin, title: g.event.title, subtitle: g.event.subtitle || '', logo: g.event.logo || '', total: g.event.questions.length, phase: g.phase, qIndex: g.qIndex, preload: imageOf(g, g.qIndex + 1) });
     lobbyUpdate(g);
+    socket.emit('remote', { count: remoteCount(g) });
     // Host screen was refreshed mid-game: put it back exactly where the game is.
     if (g.phase === 'question') {
-      socket.emit('question', questionPayload(g));
+      socket.emit('question', questionPayload(g, true));
       socket.emit('answered', { answered: g.answers.size, players: g.players.size });
     } else if (g.phase === 'reveal') {
-      socket.emit('question', { ...questionPayload(g), time: 0 });
+      socket.emit('question', { ...questionPayload(g, true), time: 0 });
       socket.emit('reveal', g.lastReveal);
+      if (g.board) socket.emit('board');
     } else if (g.phase === 'final') socket.emit('final', g.finalData);
   });
   const hostGame = () => games.get(socket.data.hostPin);
-  // act 'reveal' = end the current question early; act 'advance' = start / next question / final results.
+  // act 'reveal' = end the current question early; 'board' = show the scoreboard; 'advance' = start / next question / final results.
   // q is the question the host screen is showing, so a double-click or stale screen can't skip a question.
+  // The big screen and the host's phone remote both send this, and the server decides, so the two can't disagree.
   socket.on('host:next', ({ act, q } = {}) => {
     const g = hostGame(); if (!g || q !== g.qIndex) return;
     if (act === 'reveal') { if (g.phase === 'question') reveal(g); return; }
+    if (act === 'board') {
+      if (g.phase === 'reveal' && !g.board) { g.board = true; io.to(g.pin + ':host').emit('board'); pushRemote(g); }
+      return;
+    }
     if (act !== 'advance' || !(g.phase === 'lobby' || g.phase === 'reveal')) return;
     if (g.qIndex + 1 >= g.event.questions.length) return finish(g);
     g.qIndex++; sendQuestion(g);
+  });
+  // Host's phone remote: same password as the big screen. It attaches to a game the big screen created.
+  socket.on('remote:join', ({ key, pin } = {}, cb = () => {}) => {
+    if (!isHost(key)) return cb({ error: 'Wrong host password' });
+    let g = games.get(pin);
+    if (!g) {
+      const open = [...games.values()].filter(x => x.phase !== 'final').sort((a, b) => b.created - a.created);
+      if (!open.length) return cb({ error: 'No game is running yet. Create one on the big screen first.' });
+      if (open.length > 1) return cb({ games: open.slice(0, 8).map(x => ({ pin: x.pin, title: x.event.title, players: x.players.size, phase: x.phase, qIndex: x.qIndex })) });
+      g = open[0];
+    }
+    const old = hostGame();
+    if (old && old !== g) socket.leave(remoteRoom(old));
+    socket.join(remoteRoom(g)); socket.data.hostPin = g.pin; socket.data.remote = true;
+    cb({ ok: true, state: remoteState(g) });
+    io.to(g.pin + ':host').emit('remote', { count: remoteCount(g) });
+  });
+  socket.on('disconnecting', () => {
+    const g = socket.data.remote && hostGame();
+    if (g) io.to(g.pin + ':host').emit('remote', { count: Math.max(0, remoteCount(g) - 1) });   // this socket is still counted
   });
   // Remove a player (rude name etc). Their email can't rejoin this game.
   socket.on('host:kick', ({ name } = {}) => {
@@ -325,7 +388,7 @@ io.on('connection', (socket) => {
     g.answers.set(p.id, { choice, correct, points });
     cb({ ok: true });
     io.to(g.pin + ':host').emit('answered', { answered: g.answers.size, players: g.players.size });
-    if (g.answers.size >= g.players.size) reveal(g);
+    if (g.answers.size >= g.players.size) reveal(g); else pushRemote(g);
   });
 });
 
@@ -345,6 +408,24 @@ app.put('/api/events/:id', hostOnly, (req, res) => {
     saveEvent(req.params.id, e);
     res.json({ ok: true, id: req.params.id, questions: e.questions.length });
   } catch (e) { res.status(400).json({ error: e.message }); }
+});
+// Question pictures: uploaded from the editor, shown on the big screen only.
+app.get('/api/media', hostOnly, (_, res) => {
+  let files = []; try { files = fs.readdirSync(MEDIA_DIR).map(f => '/media/' + f).filter(f => MEDIA_RE.test(f)).sort(); } catch {}
+  res.json(files);
+});
+app.put('/api/media/:name', hostOnly, express.raw({ type: () => true, limit: '12mb' }), (req, res) => {
+  const raw = String(req.params.name), dot = raw.lastIndexOf('.'), ext = raw.slice(dot + 1).toLowerCase();
+  if (dot < 1 || !/^(png|jpe?g|webp|gif|mp4|webm)$/.test(ext)) return res.status(400).json({ error: 'Use a PNG, JPG, WebP, GIF, MP4 or WebM file' });
+  if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'That file is empty' });
+  const base = raw.slice(0, dot).replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).toLowerCase() || 'picture';
+  // Random ending: an upload never overwrites another, and players can't guess a picture's address.
+  const name = `${base}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+  try {
+    fs.mkdirSync(MEDIA_DIR, { recursive: true });
+    fs.writeFileSync(path.join(MEDIA_DIR, name), req.body);
+    res.json({ ok: true, image: '/media/' + name });
+  } catch (e) { res.status(500).json({ error: 'Could not save the picture: ' + e.message }); }
 });
 // Public: lets the check-in page show the event's title and logo before the player joins.
 app.get('/api/game/:pin', (req, res) => {

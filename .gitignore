@@ -5,3 +5,5 @@ test/server.log
 # live question sets stay private
 events/*.json
 !events/sample-*.json
+# question pictures stay private too (they hint at the questions)
+events/media/

@@ -27,6 +27,10 @@
   .a input[type=text] { padding: 10px; background: rgba(0,0,0,.35); border-color: transparent; color: #fff; }
   .a input[type=radio] { width: 22px; height: 22px; flex: none; accent-color: #fff; }
   .a.right { outline: 3px solid #fff; }
+  .pic { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .pic .thumb { width: 150px; height: 94px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); background: #000; flex: none; }
+  .pic .picside { flex: 1 1 260px; display: grid; gap: 8px; }
+  .picmsg { font-size: 13px; }
   .tools { display: flex; gap: 6px; flex-wrap: wrap; }
   .save { position: fixed; left: 0; right: 0; bottom: 0; background: #0b0f0dee; border-top: 1px solid var(--line); padding: 12px 16px; }
   .save .inner { max-width: 900px; margin: 0 auto; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
@@ -142,7 +146,7 @@ $('back').onclick = async () => {
 
 function openEditor(data, id, fresh) {
   ev = { title: data.title || '', subtitle: data.subtitle || '', logo: data.logo || '', timePerQuestion: data.timePerQuestion || 20, doubleLast: data.doubleLast || 0,
-    questions: (data.questions || []).map(q => ({ q: q.q || '', answers: [...(q.answers || [])], correct: q.correct ?? 0, time: q.time ?? '', fact: q.fact || '' })) };
+    questions: (data.questions || []).map(q => ({ q: q.q || '', answers: [...(q.answers || [])], correct: q.correct ?? 0, time: q.time ?? '', fact: q.fact || '', image: q.image || '', credit: q.credit || '' })) };
   evId = id; isNew = fresh;
   $('evId').value = id; $('evId').disabled = !fresh;
   $('title').value = ev.title; $('subtitle').value = ev.subtitle; $('tpq').value = ev.timePerQuestion; $('dbl').value = ev.doubleLast;
@@ -150,7 +154,7 @@ function openEditor(data, id, fresh) {
   $('importMsg').textContent = ''; $('status').textContent = fresh ? 'New event - not saved yet' : 'Saved'; $('status').className = fresh ? 'muted' : 'ok';
   dirty = fresh; render();
 }
-const blankQ = () => ({ q: '', answers: ['', '', '', ''], correct: 0, time: '', fact: '' });
+const blankQ = () => ({ q: '', answers: ['', '', '', ''], correct: 0, time: '', fact: '', image: '', credit: '' });
 
 // ---------- event fields ----------
 $('title').oninput = (e) => { ev.title = e.target.value; $('edTitle').textContent = ev.title || 'Event'; setDirty(); };
@@ -186,12 +190,23 @@ function render() {
       <div class="ans">${[0, 1, 2, 3].map(j => `
         <label class="a ${q.correct === j && q.answers[j]?.trim() ? 'right' : ''}" style="background:${COLORS[j]}">
           <input type="radio" name="c${i}" data-f="correct" value="${j}" ${q.correct === j ? 'checked' : ''} title="Correct answer">
-          ${SHAPES[j]}
+          ${KEYS[j]}
           <input type="text" data-f="a" data-j="${j}" maxlength="80" value="${esc(q.answers[j] || '')}" placeholder="Answer ${LETTERS[j]}${j > 1 ? ' (optional)' : ''}">
         </label>`).join('')}</div>
       <div class="row">
         <label class="f" style="flex:0 0 200px">Seconds (blank = event default)<input type="number" min="5" max="120" data-f="time" value="${esc(q.time)}"></label>
         <label class="f">Fun fact shown after the answer (optional)<input type="text" maxlength="200" data-f="fact" value="${esc(q.fact || '')}" placeholder="e.g. The first DEF CON was in 1993 with about 100 people"></label>
+      </div>
+      <div class="pic">
+        ${q.image ? (/\.(mp4|webm)$/i.test(q.image) ? `<video class="thumb" src="${esc(q.image)}" muted loop autoplay playsinline></video>` : `<img class="thumb" src="${esc(q.image)}" alt="" loading="lazy">`) : ''}
+        <div class="picside">
+          <div class="row">
+            <label class="btn ghost small" style="cursor:pointer">${q.image ? 'Change picture' : '+ Picture or short video'}<input type="file" data-f="pic" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm" hidden></label>
+            ${q.image ? `<button class="btn ghost small" data-act="nopic">Remove</button>
+            <input type="text" maxlength="140" data-f="credit" value="${esc(q.credit || '')}" placeholder="Photo credit shown in the corner (optional)">` : ''}
+          </div>
+          <div class="picmsg muted">Shown on the big screen only, while the question is up. Pick one that doesn't give away the answer.</div>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -201,7 +216,9 @@ function render() {
 $('qs').addEventListener('input', (e) => {
   const card = e.target.closest('.q'); if (!card) return;
   const q = ev.questions[+card.dataset.i], f = e.target.dataset.f;
+  if (f === 'pic') return;                      // file picker: handled by the upload below
   if (f === 'q') q.q = e.target.value;
+  else if (f === 'credit') q.credit = e.target.value;
   else if (f === 'a') q.answers[+e.target.dataset.j] = e.target.value;
   else if (f === 'time') q.time = e.target.value;
   else if (f === 'fact') q.fact = e.target.value;
@@ -218,8 +235,25 @@ $('qs').addEventListener('click', (e) => {
   if (b.dataset.act === 'up') [Q[i - 1], Q[i]] = [Q[i], Q[i - 1]];
   if (b.dataset.act === 'down') [Q[i + 1], Q[i]] = [Q[i], Q[i + 1]];
   if (b.dataset.act === 'dup') Q.splice(i + 1, 0, { ...Q[i], answers: [...Q[i].answers] });
+  if (b.dataset.act === 'nopic') { Q[i].image = ''; Q[i].credit = ''; }
   if (b.dataset.act === 'del') { if (Q[i].q.trim() && !confirm(`Delete Q${i + 1}?`)) return; Q.splice(i, 1); }
   setDirty(); render();
+});
+// Picture upload: the file goes to the server right away; the question keeps only its address until you Save.
+$('qs').addEventListener('change', async (e) => {
+  if (e.target.dataset.f !== 'pic') return;
+  const card = e.target.closest('.q'), q = ev.questions[+card.dataset.i], file = e.target.files[0], msg = card.querySelector('.picmsg');
+  if (!file) return;
+  const say = (text, bad) => { msg.textContent = text; msg.className = 'picmsg ' + (bad ? 'err' : 'muted'); };
+  if (file.size > 10 * 1024 * 1024) return say('That file is over 10 MB. Use a smaller one.', true);
+  say('Uploading…');
+  try {
+    const r = await fetch('/api/media/' + encodeURIComponent(file.name), { method: 'PUT', body: file,
+      headers: { 'x-host-key': key, 'content-type': file.type || 'application/octet-stream' } });
+    const body = await r.json().catch(() => null);
+    if (!r.ok) throw new Error(body?.error || `Upload failed (${r.status})`);
+    q.image = body.image; setDirty(); render();
+  } catch (err) { say(err.message, true); }
 });
 $('addQ').onclick = () => {
   ev.questions.push(blankQ()); setDirty(); render();
@@ -284,12 +318,13 @@ function doImport(replace) {
   if (/^\s*[{\[]/.test(text)) {
     try {
       const j = JSON.parse(text), list = Array.isArray(j) ? j : j.questions || [];
-      qs = list.map(q => ({ q: q.q || '', answers: [...(q.answers || []), '', '', '', ''].slice(0, 4), correct: q.correct ?? 0, time: q.time ?? '', fact: q.fact || '' }));
+      qs = list.map(q => ({ q: q.q || '', answers: [...(q.answers || []), '', '', '', ''].slice(0, 4), correct: q.correct ?? 0, time: q.time ?? '', fact: q.fact || '', image: q.image || '', credit: q.credit || '' }));
       if (!Array.isArray(j)) { if (j.title && !ev.title) { ev.title = j.title; $('title').value = j.title; } }
     } catch { return $('importMsg').textContent = 'That JSON could not be read.'; }
   } else ({ out: qs, errors } = rowsToQuestions(parseTable(text)));
   if (!qs.length) return $('importMsg').textContent = 'No questions found.' + (errors.length ? ' Check ' + errors.join(', ') + '.' : '');
-  if (replace && ev.questions.some(q => q.q.trim()) && !confirm(`Replace all ${ev.questions.length} questions with ${qs.length} imported ones?`)) return;
+  if (replace && ev.questions.some(q => q.q.trim()) && !confirm(`Replace all ${ev.questions.length} questions with ${qs.length} imported ones?` +
+    (ev.questions.some(q => q.image) && !qs.some(q => q.image) ? ' Pictures are not part of a spreadsheet, so the pictures on the current questions will be removed.' : ''))) return;
   ev.questions = replace ? qs : ev.questions.filter(q => q.q.trim() || q.answers.some(a => a.trim())).concat(qs);
   fileText = null; $('paste').value = '';
   $('importMsg').innerHTML = `<span class="ok">Imported ${qs.length} question${qs.length > 1 ? 's' : ''}.</span>` +
@@ -325,6 +360,7 @@ $('save').onclick = async () => {
       const o = { q: q.q.trim(), answers, correct: q.correct };
       if (q.time !== '') o.time = +q.time;
       if ((q.fact || '').trim()) o.fact = q.fact.trim();
+      if (q.image) { o.image = q.image; if ((q.credit || '').trim()) o.credit = q.credit.trim(); }
       return o;
     }) };
   $('save').disabled = true;

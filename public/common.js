@@ -1,11 +1,7 @@
 // Shared by host and player pages.
-const COLORS = ['var(--red)', 'var(--blue)', 'var(--yellow)', 'var(--green)'];
-const SHAPES = [
-  '<svg class="shape" viewBox="0 0 10 10"><path d="M5 .8 9.6 9.2H.4z"/></svg>',          // triangle
-  '<svg class="shape" viewBox="0 0 10 10"><path d="M5 .3 9.7 5 5 9.7.3 5z"/></svg>',     // diamond
-  '<svg class="shape" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4.6"/></svg>',        // circle
-  '<svg class="shape" viewBox="0 0 10 10"><rect x=".8" y=".8" width="8.4" height="8.4"/></svg>' // square
-];
+// Each answer has a color and a letter badge, so the host can say "A, B, C or D" and players can match by either.
+const COLORS = ['var(--a)', 'var(--b)', 'var(--c)', 'var(--d)'];
+const KEYS = ['A', 'B', 'C', 'D'].map(l => `<span class="key">${l}</span>`);
 // Sponsor badge shown on the host and player screens. Edit here to rebrand.
 const SPONSOR = { name: 'DoD Cyber Consulting', url: 'https://dodcyberconsulting.com' };
 function renderSponsor() {

@@ -8,96 +8,218 @@
 <style>
   body { overflow: hidden; }
   [hidden] { display: none !important; }
-  .screen { display: none; height: 100vh; flex-direction: column; padding: 2.5vh 3vw; gap: 2vh; }
-  .screen.on { display: flex; }
+  .screen { display: none; position: relative; z-index: 1; height: 100vh; flex-direction: column; padding: 2.5vh 3vw; gap: 2vh; }
+  .screen.on { display: flex; animation: scrIn .35s ease-out; }
+  @keyframes scrIn { from { opacity: 0; transform: scale(1.015); } }
   .center { align-items: center; justify-content: center; text-align: center; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 28px; width: min(440px, 92vw); display: grid; gap: 14px; }
-  .mute { position: fixed; top: 1.2vh; right: 1.2vw; z-index: 50; background: var(--panel); border: 1px solid var(--line); color: var(--text);
-    border-radius: 999px; width: 5vh; height: 5vh; min-width: 40px; min-height: 40px; font-size: 2.6vh; cursor: pointer; opacity: .7; }
-  .mute:hover { opacity: 1; }
-  /* lobby */
-  .lobby-top { display: flex; gap: 4vw; align-items: center; justify-content: center; }
-  .qr { background: #fff; padding: 12px; border-radius: 16px; width: 30vh; height: 30vh; }
-  .pinbox { text-align: left; }
-  .pinbox .lbl { font-size: 2.4vh; color: var(--muted); }
-  .pin { font: 800 14vh/1 var(--mono); letter-spacing: .05em; color: var(--accent); }
-  .url { font: 2.2vh var(--mono); color: var(--muted); }
-  .names { flex: 1; display: flex; flex-wrap: wrap; gap: 10px; align-content: flex-start; justify-content: center; overflow: hidden; }
-  .names span { background: var(--panel); border: 1px solid var(--line); padding: 8px 16px; border-radius: 999px; font-size: 2.4vh; animation: pop .25s ease-out; cursor: pointer; }
-  .names span.arm { background: #b0142f; border-color: #ff6b6b; }
-  .names span.arm::after { content: " ✕ remove?"; font-weight: 700; }
-  .hint { font-size: 1.8vh; color: var(--muted); text-align: center; }
+  .panel { background: linear-gradient(180deg, rgba(17, 30, 23, .95), rgba(8, 15, 12, .95)); border: 1px solid var(--line); border-radius: 1.6vh;
+    box-shadow: 0 1.2vh 4vh rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .05); }
+  .card { padding: 28px; width: min(440px, 92vw); display: grid; gap: 14px; position: relative; overflow: hidden; }
+  .card::before, .qpanel::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: linear-gradient(90deg, transparent, var(--accent), transparent); }
+  .card h2 { margin: 0; font: 800 20px var(--mono); color: var(--accent); }
+  .card h2::after { content: "_"; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .card a { color: var(--muted); font-size: 14px; }
+  .ctl { position: fixed; top: 1.2vh; right: 1.2vw; z-index: 50; display: flex; gap: .8vh; }
+  .ctl button { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 999px; width: 5vh; height: 5vh; min-width: 40px; min-height: 40px;
+    font-size: 2.4vh; cursor: pointer; opacity: .6; }
+  .ctl button:hover { opacity: 1; }
+  .ctl button.off { filter: grayscale(1); opacity: .35; }
   @keyframes pop { from { transform: scale(.6); opacity: 0 } }
-  .bar { display: flex; justify-content: space-between; align-items: center; font-size: 2.6vh; gap: 2vw; }
-  #s-q .bar { padding-right: max(4vw, 48px); }   /* room for the sound button */
-  /* question */
-  .qtext { font-size: 5vh; font-weight: 700; text-align: center; background: var(--panel); border-radius: 16px; padding: 3vh 3vw; }
-  .dbl { background: linear-gradient(90deg, #ffb800, #ff5e00); color: #000; font-weight: 800; padding: .6vh 1.6vw; border-radius: 999px; animation: pulse 1s ease-in-out infinite alternate; }
   @keyframes pulse { to { transform: scale(1.08); } }
-  .fact { font-size: 3vh; background: #10251a; border: 1px solid var(--accent); border-radius: 14px; padding: 1.6vh 2vw; text-align: center; animation: pop .4s ease-out; }
-  .mid { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: space-between; }
-  .timer { width: 18vh; height: 18vh; border-radius: 50%; display: grid; place-items: center; font: 800 8vh var(--mono); background: var(--accent); color: #000; flex: none; }
-  .timer.low { background: #ff4d4d; animation: pulse .5s ease-in-out infinite alternate; }
-  .pct { width: 24vh; text-align: center; font-size: 2.6vh; font-weight: 700; animation: pop .4s ease-out; }
-  .pct b { display: block; font: 800 9vh/1 var(--mono); color: var(--accent); }
-  .count { text-align: center; font-size: 3vh; } .count b { display: block; font-size: 8vh; }
-  .chart { display: flex; gap: 2vw; align-items: flex-end; height: min(26vh, 100%); }
-  .col { width: 9vw; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; font: 700 3.4vh var(--mono); }
-  .col i { display: block; width: 100%; border-radius: 8px 8px 0 0; min-height: 6px; transition: height .6s; }
-  .col.wrong { opacity: .3; }
+  @keyframes bump { 40% { transform: scale(1.22); color: var(--accent); } }
+
+  /* headline with an occasional glitch */
+  h1.title { font-size: 6.4vh; margin: 0; letter-spacing: .03em; text-transform: uppercase; }
+  .glitch { position: relative; display: inline-block; text-shadow: 0 0 2.6vh rgba(57, 255, 136, .5); }
+  .glitch::before, .glitch::after { content: attr(data-text); position: absolute; left: 0; top: 0; width: 100%; text-align: inherit; opacity: 0; pointer-events: none; text-shadow: none; }
+  .glitch::before { color: var(--cyan); animation: gl1 7s steps(1) infinite; }
+  .glitch::after { color: var(--danger); animation: gl2 7s steps(1) infinite; }
+  @keyframes gl1 { 0%, 4.6%, 100% { opacity: 0 } 1% { opacity: .9; transform: translate(-.6vh, -.2vh); clip-path: inset(10% 0 55% 0) }
+    2.2% { opacity: .9; transform: translate(.5vh, .1vh); clip-path: inset(60% 0 8% 0) } 3.4% { opacity: .9; transform: translate(-.3vh, 0); clip-path: inset(35% 0 30% 0) } }
+  @keyframes gl2 { 0%, 4.6%, 100% { opacity: 0 } 1% { opacity: .9; transform: translate(.6vh, .2vh); clip-path: inset(50% 0 20% 0) }
+    2.2% { opacity: .9; transform: translate(-.5vh, -.1vh); clip-path: inset(5% 0 70% 0) } 3.4% { opacity: .9; transform: translate(.3vh, 0); clip-path: inset(70% 0 5% 0) } }
+
+  /* lobby */
+  .lobby-head { text-align: center; }
+  .subtitle { color: var(--muted); font: 500 2.2vh var(--mono); margin-top: .8vh; }
+  .subtitle::before { content: "> "; color: var(--accent); }
+  .lobby-top { display: flex; gap: 4vw; align-items: center; justify-content: center; }
+  .qrwrap { position: relative; padding: 1.8vh; }
+  .qrwrap::before { content: ""; position: absolute; inset: 0; pointer-events: none; --l: 4vh; --t: .5vh;
+    background:
+      linear-gradient(var(--accent), var(--accent)) top left / var(--l) var(--t) no-repeat, linear-gradient(var(--accent), var(--accent)) top left / var(--t) var(--l) no-repeat,
+      linear-gradient(var(--accent), var(--accent)) top right / var(--l) var(--t) no-repeat, linear-gradient(var(--accent), var(--accent)) top right / var(--t) var(--l) no-repeat,
+      linear-gradient(var(--accent), var(--accent)) bottom left / var(--l) var(--t) no-repeat, linear-gradient(var(--accent), var(--accent)) bottom left / var(--t) var(--l) no-repeat,
+      linear-gradient(var(--accent), var(--accent)) bottom right / var(--l) var(--t) no-repeat, linear-gradient(var(--accent), var(--accent)) bottom right / var(--t) var(--l) no-repeat;
+    filter: drop-shadow(0 0 1vh var(--accent)); animation: brk 1.6s ease-in-out infinite alternate; }
+  @keyframes brk { to { transform: scale(1.045); } }
+  .qr { display: block; background: #fff; padding: 12px; border-radius: 12px; width: 30vh; height: 30vh; }
+  .pinbox { text-align: left; }
+  .pinbox .lbl { font: 500 2.2vh var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .12em; }
+  .pin { font: 800 14vh/1.05 var(--mono); letter-spacing: .04em; color: var(--accent); text-shadow: 0 0 1vh rgba(57, 255, 136, .8), 0 0 4vh rgba(57, 255, 136, .5); }
+  .url { font: 500 2.4vh var(--mono); color: var(--text); }
+  .names { flex: 1; min-height: 0; display: flex; flex-wrap: wrap; gap: 1.1vh; align-content: flex-start; justify-content: center; overflow: hidden;
+    -webkit-mask-image: linear-gradient(#000 72%, transparent); mask-image: linear-gradient(#000 72%, transparent); }
+  .names:empty::before { content: "> waiting for players"; font: 500 2.6vh var(--mono); color: var(--muted); }
+  .names:empty::after { content: "_"; font: 800 2.6vh var(--mono); color: var(--accent); animation: blink 1s steps(1) infinite; }
+  .names span { background: rgba(14, 25, 19, .92); border: 1px solid var(--line); padding: .9vh 1.8vh; border-radius: 999px; font: 500 2.3vh var(--mono); cursor: pointer;
+    animation: chip .5s ease-out; }
+  @keyframes chip { 0% { transform: scale(.5); opacity: 0; } 55% { transform: scale(1.1); border-color: var(--accent); color: var(--accent); box-shadow: 0 0 2vh rgba(57, 255, 136, .6); } }
+  .names span.arm { background: #b0142f; border-color: #ff6b6b; }
+  .names span.arm::after { content: " ✕ remove?"; font-weight: 800; }
+  .hint { font-size: 1.8vh; color: var(--muted); text-align: center; }
+  .hint b { color: var(--accent); font-weight: 500; }
+  .bar { display: flex; justify-content: space-between; align-items: center; font-size: 2.6vh; gap: 2vw; }
+  .pc b { display: inline-block; font: 800 4.4vh var(--mono); color: var(--accent); text-shadow: 0 0 2vh rgba(57, 255, 136, .5); margin-right: .4vw; }
+  .pc b.bump, .count b.bump { animation: bump .3s ease-out; }
+  .screen .btn { font-size: 2.6vh; padding: 1.5vh 2.6vh; border-radius: 1.2vh; }
+
+  /* question */
+  #s-q .bar { padding-right: max(8vw, 110px); }   /* room for the round buttons */
+  .qnum { font: 500 2.8vh var(--mono); color: var(--muted); white-space: nowrap; } .qnum b { font-weight: 800; color: var(--accent); font-size: 3.6vh; }
+  .prog { flex: 1; height: .9vh; border-radius: 999px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+  .prog i { display: block; height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--cyan)); box-shadow: 0 0 1.2vh var(--accent); transition: width .6s ease; }
+  .dbl { background: linear-gradient(90deg, #ffb800, #ff5e00); color: #000; font-weight: 700; padding: .6vh 1.6vw; border-radius: 999px; white-space: nowrap;
+    box-shadow: 0 0 2.4vh rgba(255, 140, 0, .6); animation: pulse 1s ease-in-out infinite alternate; }
+  .qpanel { position: relative; overflow: hidden; padding: 2.6vh 3vw 2.8vh; text-align: center; }
+  .qtext { font-size: 5vh; font-weight: 700; line-height: 1.22; }
+  .qtext .ch { opacity: 0; animation: chIn .3s linear forwards; animation-delay: calc(var(--i) * var(--st, 5ms)); }
+  @keyframes chIn { 0% { opacity: 1; color: var(--accent); text-shadow: 0 0 1.6vh var(--accent); } 100% { opacity: 1; } }
+  .fact { font-size: 2.9vh; background: linear-gradient(90deg, rgba(57, 255, 136, .16), rgba(0, 212, 255, .08)), rgba(8, 15, 12, .92); border: 1px solid rgba(57, 255, 136, .5);
+    border-left: .8vh solid var(--accent); border-radius: 1.2vh; padding: 1.4vh 2vw; text-align: center; animation: pop .4s ease-out; }
+  .mid { flex: 1; min-height: 0; display: grid; grid-template-columns: 24vh minmax(0, 1fr) 24vh; grid-template-rows: minmax(0, 1fr); gap: 2vw; align-items: center; }
+  .side { display: grid; place-items: center; text-align: center; }
+  .timer { --tc: var(--accent); position: relative; width: 20vh; height: 20vh; display: grid; place-items: center; }
+  .timer.warn { --tc: var(--amber); }
+  .timer.low { --tc: var(--danger); animation: pulse .5s ease-in-out infinite alternate; }
+  .timer svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); filter: drop-shadow(0 0 1.2vh var(--tc)); }
+  .timer circle { fill: rgba(4, 8, 6, .7); stroke-width: 7; }
+  .timer .trk { stroke: rgba(255, 255, 255, .09); }
+  .timer .arc { fill: none; stroke: var(--tc); stroke-linecap: round; stroke-dasharray: 276.46; transition: stroke-dashoffset 1s linear, stroke .3s; }
+  .timer b { position: relative; font: 800 8.4vh var(--mono); color: var(--tc); text-shadow: 0 0 2vh var(--tc); }
+  .pct { font-size: 2.5vh; font-weight: 700; animation: pop .4s ease-out; }
+  .pct b { display: block; font: 800 9vh/1.05 var(--mono); color: var(--accent); text-shadow: 0 0 2.4vh rgba(57, 255, 136, .6); }
+  .pct.ouch b { color: var(--danger); text-shadow: 0 0 2.4vh rgba(255, 59, 92, .6); }
+  .count b { display: block; font: 800 9vh/1 var(--mono); }
+  .count .of { font: 500 2.4vh var(--mono); color: var(--muted); }
+  .count .lbl { font: 500 2vh var(--mono); text-transform: uppercase; letter-spacing: .14em; color: var(--muted); margin-top: .4vh; }
+  .meter { width: 16vh; height: 1vh; border-radius: 999px; background: rgba(255, 255, 255, .09); overflow: hidden; margin: 1.2vh auto 0; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--accent); box-shadow: 0 0 1vh var(--accent); transition: width .3s; }
+  /* centre stage: a picture for the question if it has one, otherwise a radar that pings as answers arrive; the answer chart on reveal */
+  .stage { height: 100%; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 2.4vw; }
+  .media { position: relative; margin: 0; height: 100%; aspect-ratio: 16 / 10; max-width: 100%; overflow: hidden; border-radius: 1.4vh; border: 1px solid rgba(57, 255, 136, .45);
+    background: #000; box-shadow: 0 0 3vh rgba(57, 255, 136, .22), 0 1.2vh 4vh rgba(0, 0, 0, .6); animation: pop .45s ease-out; }
+  .media::before { content: ""; position: absolute; inset: -6vh; background: var(--img) center / cover; filter: blur(3vh) brightness(.45); }
+  .media img, .media video { position: relative; width: 100%; height: 100%; object-fit: contain; display: block; }
+  .media.still img { animation: drift 26s ease-in-out infinite alternate; }
+  @keyframes drift { from { transform: scale(1); } to { transform: scale(1.09); } }
+  .media::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .16) 0 1px, transparent 1px 4px); }
+  .media figcaption { position: absolute; z-index: 1; right: .8vh; bottom: .6vh; max-width: 92%; font: 500 1.35vh var(--mono); color: rgba(255, 255, 255, .78);
+    background: rgba(0, 0, 0, .6); padding: .2vh .8vh; border-radius: .6vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .radar { position: relative; height: min(100%, 30vh); aspect-ratio: 1; flex: none; border-radius: 50%; border: 2px solid rgba(57, 255, 136, .65); overflow: hidden;
+    background:
+      linear-gradient(rgba(57, 255, 136, .28), rgba(57, 255, 136, .28)) center / 1px 100% no-repeat,
+      linear-gradient(rgba(57, 255, 136, .28), rgba(57, 255, 136, .28)) center / 100% 1px no-repeat,
+      repeating-radial-gradient(circle, transparent 0 16%, rgba(57, 255, 136, .3) 16% 16.7%), #050e09;
+    box-shadow: 0 0 3vh rgba(57, 255, 136, .28), inset 0 0 4vh rgba(57, 255, 136, .14); transition: filter .5s; }
+  .radar::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0 70%, rgba(57, 255, 136, .65) 100%); animation: spin 2.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  body.fx-danger .radar { filter: hue-rotate(-142deg) saturate(1.5); }
+  .blip { position: absolute; width: 1.4vh; height: 1.4vh; margin: -.7vh; border-radius: 50%; background: #c8ffdc; box-shadow: 0 0 1.6vh var(--accent), 0 0 .4vh #fff; animation: blip 2.8s ease-out forwards; }
+  @keyframes blip { 0% { transform: scale(0); opacity: 0; } 10% { transform: scale(1.8); opacity: 1; } 28% { transform: scale(1); } 100% { transform: scale(.5); opacity: 0; } }
+  .feed { flex: 0 1 50vh; min-width: 0; height: min(100%, 30vh); overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; text-align: left;
+    font: 500 2.1vh/1.6 var(--mono); color: rgba(57, 255, 136, .9); -webkit-mask-image: linear-gradient(transparent, #000 50%); mask-image: linear-gradient(transparent, #000 50%); }
+  .feed div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: feedIn .2s ease-out; }
+  .feed b { color: #fff; font-weight: 800; }
+  @keyframes feedIn { from { opacity: 0; transform: translateX(-1.5vh); } }
+  .chart { display: flex; gap: 2vw; align-items: flex-end; height: min(30vh, 100%); }
+  .col { width: 8vw; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; font: 800 3.4vh var(--mono); }
+  .col i { display: block; width: 100%; border-radius: 1vh 1vh 0 0; min-height: 6px; background: var(--k); transition: height .8s cubic-bezier(.2, .9, .3, 1.15); }
+  .col .key { font-size: 2vh; margin-top: .8vh; }
+  .col.wrong { color: var(--muted); }
+  .col.wrong i, .col.wrong .key { filter: saturate(.45) brightness(.45); }
+  .col.ok i { box-shadow: 0 0 0 3px var(--accent), 0 0 3vh rgba(57, 255, 136, .6); }
+  #s-q.live .chart, #s-q.shown .radar, #s-q.shown .feed, #s-q.pic .radar, #s-q.pic .feed { display: none; }
+  #s-q.shown.pic .media { height: 82%; flex: 0 1 auto; }
   .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6vh; }
-  .tile { border-radius: 12px; padding: 2.6vh 2vw; font-size: 3.6vh; font-weight: 700; display: flex; align-items: center; gap: 1.6vw; color: #fff; }
-  .tile.dim { opacity: .25; } .tile.right::after { content: "✔"; margin-left: auto; }
-  /* leaderboard / podium */
-  .board { width: min(900px, 90vw); display: grid; gap: 1.4vh; }
-  .row { display: flex; align-items: center; gap: 1.2vw; background: var(--panel); border-radius: 12px; padding: 2vh 2vw; font-size: 3.6vh; font-weight: 700; animation: slide .45s ease-out backwards; }
-  .row:first-child { background: var(--accent); color: #000; }
+  .tile { display: flex; align-items: center; gap: 1.6vw; min-height: 9.6vh; padding: 1.1vh 1.6vw 1.1vh 1.1vh; border-radius: 1.4vh; font-size: 3.5vh; font-weight: 700; line-height: 1.15; color: #fff;
+    background: #101a15; background: linear-gradient(90deg, color-mix(in srgb, var(--k) 62%, #08100c), color-mix(in srgb, var(--k) 26%, #08100c));
+    border: 2px solid var(--k); box-shadow: 0 .8vh 2.4vh rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .12);
+    animation: tileIn .45s cubic-bezier(.2, .9, .3, 1.15) backwards; animation-delay: calc(var(--i) * 70ms + 250ms); transition: transform .4s, filter .4s; }
+  @keyframes tileIn { from { opacity: 0; transform: translateY(3vh) scale(.96); } }
+  .tile .key { width: 7.4vh; height: 7.4vh; font-size: 4.4vh; border-radius: 1vh; }
+  .tile.dim { filter: saturate(.35) brightness(.42); transform: scale(.985); }
+  .tile.right { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent), 0 0 5vh rgba(57, 255, 136, .6); animation: rightPop .6s ease-out; }
+  .tile.right::after { content: "✔"; margin-left: auto; color: var(--accent); font-size: 4.8vh; text-shadow: 0 0 2vh var(--accent); }
+  @keyframes rightPop { 35% { transform: scale(1.045); } }
+
+  /* scoreboard */
+  .board { width: min(1000px, 90vw); display: grid; gap: 1.4vh; }
+  .row { --w: 0%; position: relative; overflow: hidden; display: flex; align-items: center; gap: 1.4vw; background: rgba(12, 21, 17, .95); border: 1px solid var(--line);
+    border-radius: 1.4vh; padding: 1.7vh 2vw; font-size: 3.5vh; font-weight: 700; animation: slide .45s ease-out backwards; }
+  .row::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--w); background: linear-gradient(90deg, rgba(57, 255, 136, .26), rgba(57, 255, 136, .05));
+    transition: width 1.1s cubic-bezier(.2, .8, .2, 1); }
+  .row > * { position: relative; }
+  .row .rk { flex: none; width: 6.4vh; height: 6.4vh; border-radius: 1.1vh; display: grid; place-items: center; font: 800 3.2vh var(--mono); background: rgba(255, 255, 255, .08); color: var(--muted); }
+  .row.top { border-color: var(--accent); box-shadow: 0 0 4vh rgba(57, 255, 136, .32); }
+  .row.top .rk { background: var(--accent); color: #02140a; box-shadow: 0 0 2vh rgba(57, 255, 136, .7); }
+  .row.top .nm { color: var(--accent); text-shadow: 0 0 2vh rgba(57, 255, 136, .45); }
   .row .nm { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row b { font-family: var(--mono); }
-  .mv { font: 700 2.6vh var(--mono); min-width: 6vh; }
-  .mv.up { color: #39ff88; } .mv.down { color: #ff6b6b; }
-  .row:first-child .mv.up { color: #064d22; } .row:first-child .mv.down { color: #7a0012; }
-  .kick { background: transparent; border: 0; color: inherit; opacity: .35; font-size: 2.6vh; cursor: pointer; padding: 0 .4vw; }
+  .row b { font: 800 3.5vh var(--mono); }
+  .mv { font: 800 2.6vh var(--mono); min-width: 6vh; }
+  .mv.up { color: var(--accent); } .mv.down { color: #ff6b6b; }
+  .kick { background: transparent; border: 0; color: inherit; opacity: .3; font-size: 2.6vh; cursor: pointer; padding: 0 .4vw; }
   .kick:hover { opacity: 1; }
   @keyframes slide { from { transform: translateY(6vh); opacity: 0 } }
-  .podium { display: flex; align-items: flex-end; gap: 2vw; height: 40vh; }
-  .step { width: 20vw; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; animation: rise .8s ease-out backwards; }
-  .step div { width: 100%; border-radius: 12px 12px 0 0; display: grid; place-items: center; font: 800 7vh var(--mono); color: #000; }
-  .step .nm { font-size: 4vh; font-weight: 800; } .step .sc { font: 2.8vh var(--mono); color: var(--muted); margin-bottom: 1vh; }
+
+  /* podium */
+  .podium { display: flex; align-items: flex-end; gap: 2vw; height: 36vh; }
+  #s-final .evlogo { height: 9vh; }
+  .step { width: 20vw; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; animation: rise .8s cubic-bezier(.2, .9, .3, 1.1) backwards; }
+  .step div { width: 100%; border-radius: 1.4vh 1.4vh 0 0; display: grid; place-items: center; font: 800 7vh var(--mono); color: rgba(0, 0, 0, .75);
+    background: linear-gradient(180deg, var(--m1), var(--m2)); box-shadow: 0 0 5vh var(--mg), inset 0 3px 0 rgba(255, 255, 255, .55); }
+  .step .crown { font-size: 5.4vh; line-height: 1; animation: pulse .7s ease-in-out infinite alternate; }
+  .step .nm { font-size: 4vh; font-weight: 700; max-width: 22vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .step .sc { font: 500 2.8vh var(--mono); color: var(--muted); margin-bottom: 1vh; }
   @keyframes rise { from { transform: translateY(40vh); opacity: 0 } }
   .finalx { display: flex; gap: 3vw; align-items: flex-start; justify-content: center; animation: pop .5s ease-out backwards; }
-  .rest { display: grid; grid-template-columns: auto auto; gap: .6vh 2.4vw; font-size: 2.4vh; text-align: left; }
-  .rest b { font-family: var(--mono); color: var(--muted); font-weight: 400; }
+  .rest { display: grid; grid-auto-flow: column; grid-template-rows: repeat(4, auto); gap: .6vh 3vw; font-size: 2.4vh; text-align: left; }
+  .rest div { display: flex; justify-content: space-between; gap: 1.6vw; min-width: 17vw; }
+  .rest span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 20vw; }
+  .rest b { font: 500 2.4vh var(--mono); color: var(--muted); }
   .awards { display: grid; gap: 1vh; }
-  .awards h3 { margin: 0; font-size: 2.2vh; color: var(--muted); font-weight: 600; }
-  .award { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.2vh 1.6vw; font-size: 2.6vh; text-align: left; }
+  .awards h3 { margin: 0; font: 500 2vh var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
+  .award { background: rgba(12, 21, 17, .95); border: 1px solid var(--line); border-left: .6vh solid var(--amber); border-radius: 1.2vh; padding: 1.2vh 1.6vw; font-size: 2.6vh; text-align: left; }
   .award span { color: var(--muted); font-size: 2.1vh; }
-  h1.title { font-size: 6vh; margin: 0; }
   .sponsor { font-size: 2.6vh; }
 </style>
 </head>
 <body>
-<button class="mute" id="mute" title="Sound on/off (M)">🔊</button>
+<div class="ctl">
+  <button id="fxb" title="Background effects on/off (B)">✨</button>
+  <button id="mute" title="Sound on/off (M)">🔊</button>
+</div>
 
 <!-- 1. login -->
 <section id="s-login" class="screen on center">
-  <div class="card">
-    <h2 style="margin:0">Host a game</h2>
+  <div class="card panel">
+    <h2>&gt; host a game</h2>
     <input id="key" type="password" placeholder="Host password" autocomplete="current-password">
     <button class="btn" id="loadEvents">Unlock</button>
     <select id="event" hidden></select>
     <button class="btn" id="create" hidden>Create game</button>
     <div id="err" class="err"></div>
-    <a href="/editor.html" style="color:var(--muted);font-size:14px">Edit questions</a>
+    <div style="display:flex;gap:18px;justify-content:center"><a href="/editor.html">Edit questions</a><a href="/remote.html">Phone remote</a></div>
   </div>
 </section>
 
 <!-- 2. lobby -->
 <section id="s-lobby" class="screen">
   <img class="evlogo" id="lobbyLogo" alt="" hidden>
-  <h1 class="title center" id="lobbyTitle" style="display:flex"></h1>
+  <div class="lobby-head"><h1 class="title glitch" id="lobbyTitle"></h1><div class="subtitle" id="lobbySub" hidden></div></div>
   <div class="lobby-top">
-    <img class="qr" id="qr" alt="Scan to join">
+    <div class="qrwrap"><img class="qr" id="qr" alt="Scan to join"></div>
     <div class="pinbox">
       <div class="lbl">Scan the code, or go to</div>
       <div class="url" id="joinUrl"></div>
@@ -106,20 +228,27 @@
     </div>
   </div>
   <div class="names" id="names"></div>
-  <div class="hint">Click a name twice to remove that player</div>
-  <div class="bar"><span><b id="pcount">0</b> players</span><a data-sponsor></a><button class="btn" id="start">Start ▶</button></div>
+  <div class="hint">Click a name twice to remove that player<b id="rpill" hidden> · 📱 phone remote connected</b></div>
+  <div class="bar"><span class="pc"><b id="pcount">0</b>players</span><a data-sponsor></a><button class="btn" id="start">Start ▶</button></div>
 </section>
 
 <!-- 3. question / reveal -->
-<section id="s-q" class="screen">
-  <div class="bar"><span id="qnum"></span><span class="dbl" id="dbl" hidden>⚡ DOUBLE POINTS</span><button class="btn ghost" id="skip">Skip ⏭</button></div>
-  <div class="qtext" id="qtext"></div>
+<section id="s-q" class="screen live">
+  <div class="bar"><span class="qnum" id="qnum"></span><div class="prog"><i id="prog"></i></div><span class="dbl" id="dbl" hidden>⚡ DOUBLE POINTS</span><button class="btn ghost" id="skip">Skip ⏭</button></div>
+  <div class="qpanel panel"><div class="qtext" id="qtext"></div></div>
   <div class="fact" id="fact" hidden></div>
   <div class="mid">
-    <div class="timer" id="timer"></div>
-    <div class="pct" id="pct" hidden></div>
-    <div class="chart" id="chart"></div>
-    <div class="count"><b id="acount">0</b>answers</div>
+    <div class="side">
+      <div class="timer" id="timer"><svg viewBox="0 0 100 100" aria-hidden="true"><circle class="trk" cx="50" cy="50" r="44"/><circle class="arc" id="arc" cx="50" cy="50" r="44"/></svg><b id="tnum"></b></div>
+      <div class="pct" id="pct" hidden></div>
+    </div>
+    <div class="stage">
+      <figure class="media" id="media" hidden></figure>
+      <div class="radar" id="radar"></div>
+      <div class="feed" id="feed"></div>
+      <div class="chart" id="chart"></div>
+    </div>
+    <div class="side count"><div><b id="acount">0</b><span class="of" id="aof"></span><div class="lbl">locked in</div><div class="meter"><i id="ameter"></i></div></div></div>
   </div>
   <div class="tiles" id="tiles"></div>
 </section>
@@ -127,7 +256,7 @@
 <!-- 4. leaderboard -->
 <section id="s-board" class="screen center">
   <img class="evlogo" data-logo alt="" hidden>
-  <h1 class="title">Scoreboard</h1>
+  <h1 class="title glitch" data-text="Scoreboard">Scoreboard</h1>
   <div class="board" id="board"></div>
   <button class="btn" id="next">Next ▶</button>
   <a data-sponsor></a>
@@ -136,7 +265,7 @@
 <!-- 5. final -->
 <section id="s-final" class="screen center">
   <img class="evlogo" data-logo alt="" hidden>
-  <h1 class="title" id="finalTitle">Winners</h1>
+  <h1 class="title glitch" id="finalTitle" data-text="Winners">Winners</h1>
   <div class="podium" id="podium"></div>
   <div class="finalx" id="finalx"><div class="rest" id="rest"></div><div class="awards" id="awards"></div></div>
   <div style="display:flex;gap:16px">
@@ -149,26 +278,54 @@
 <script src="/socket.io/socket.io.js"></script>
 <script src="/common.js"></script>
 <script src="/sfx.js"></script>
+<script src="/fx.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 const socket = io();
 handleIdle(socket);
-let key = '', pin = '', total = 0, qi = -1, timerInt = null, lastReveal = null, lastCount = 0;
+let key = '', pin = '', total = 0, qi = -1, timerInt = null, lastReveal = null, lastCount = 0, players = 0;
+const prevScore = new Map();   // name -> score last shown, so the scoreboard can count up
 const show = (id) => document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id));
 const store = (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch {} };
 const load = (k) => { try { return sessionStorage.getItem(k); } catch { return null; } };
 const fmt = (n) => Number(n).toLocaleString();
 const next = (act) => socket.emit('host:next', { act, q: qi });
+const bump = (el) => { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); };
+const preload = (src) => { if (src && !/\.(mp4|webm)$/i.test(src)) new Image().src = src; };
+// Count a number up on screen (scores, % right).
+function countUp(el, from, to, ms, done = fmt) {
+  const t0 = performance.now();
+  const step = (t) => {
+    const p = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - p, 3);
+    el.textContent = done(Math.round(from + (to - from) * e));
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
 
-// ---- sound ----
+// ---- sound + effects buttons ----
 const paintMute = () => { $('mute').textContent = Sfx.muted ? '🔇' : '🔊'; };
-paintMute();
-$('mute').onclick = (e) => { e.stopPropagation(); Sfx.unlock(); Sfx.setMuted(!Sfx.muted); paintMute(); };
+const paintFx = () => $('fxb').classList.toggle('off', !Fx.on);
+paintMute(); paintFx();
+$('mute').onclick = (e) => { e.stopPropagation(); Sfx.unlock(); Sfx.setMuted(!Sfx.muted); paintMute(); e.currentTarget.blur(); };
+$('fxb').onclick = (e) => { Fx.toggle(); paintFx(); e.currentTarget.blur(); };
 addEventListener('pointerdown', () => Sfx.unlock());
 addEventListener('keydown', (e) => {
   Sfx.unlock();
-  if ((e.key === 'm' || e.key === 'M') && e.target.tagName !== 'INPUT') $('mute').click();
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'm' || e.key === 'M') $('mute').click();
+  if (e.key === 'b' || e.key === 'B') $('fxb').click();
 });
+// Keep the laptop awake: with the phone remote, nobody touches it for a long time.
+let wake = null;
+async function keepAwake() {
+  try {
+    if (wake || !navigator.wakeLock || document.visibilityState !== 'visible') return;
+    wake = await navigator.wakeLock.request('screen');
+    wake.addEventListener('release', () => { wake = null; });
+  } catch {}
+}
+document.addEventListener('visibilitychange', () => { if (pin) keepAwake(); });
 
 // ---- login ----
 $('loadEvents').onclick = async () => {
@@ -187,10 +344,13 @@ $('create').onclick = () => socket.emit('host:create', { key, eventId: $('event'
 function enterLobby(r) {
   pin = r.pin; total = r.total; qi = r.qIndex ?? -1; store('hostKey', key); store('hostPin', pin);
   document.querySelectorAll('#lobbyLogo, [data-logo]').forEach(img => { img.hidden = !r.logo; if (r.logo) img.src = r.logo; });
-  $('lobbyTitle').textContent = r.title; $('pin').textContent = pin.replace(/(\d{3})(\d{3})/, '$1 $2');
+  $('lobbyTitle').textContent = r.title; $('lobbyTitle').dataset.text = r.title;
+  $('lobbySub').textContent = r.subtitle || ''; $('lobbySub').hidden = !r.subtitle;
+  $('pin').textContent = pin.replace(/(\d{3})(\d{3})/, '$1 $2');
   $('qr').src = `/api/qr/${pin}.png`; $('joinUrl').textContent = `${location.host}/play.html?pin=${pin}`;
   $('csv').href = `/api/registrations.csv?key=${encodeURIComponent(key)}`;
-  show('s-lobby'); Sfx.loop('lobby');
+  preload(r.preload); keepAwake();
+  Fx.mood('calm'); show('s-lobby'); Sfx.loop('lobby');
 }
 // Survive a refresh mid-game: the server sends the current question / reveal / results right after this.
 const savedPin = load('hostPin');
@@ -198,14 +358,27 @@ if (savedPin) socket.emit('host:rejoin', { key: load('hostKey'), pin: savedPin }
   if (r.error) return store('hostPin', null);
   key = load('hostKey'); enterLobby(r);
 });
+// Wi-Fi blip: socket.io reconnects by itself, but the server has to be told which game this screen belongs to.
+socket.io.on('reconnect', () => { if (pin) socket.emit('host:rejoin', { key, pin }, () => {}); });
 
 // ---- lobby ----
+const chips = new Map();   // name -> chip, so only new names animate in
 socket.on('lobby', ({ count, names }) => {
-  if (count > lastCount && $('s-lobby').classList.contains('on')) Sfx.join();
-  lastCount = count;
+  const inLobby = $('s-lobby').classList.contains('on');
+  if (count > lastCount && inLobby) Sfx.join();
+  if (count !== lastCount) bump($('pcount'));
+  lastCount = players = count;
   $('pcount').textContent = count;
-  $('names').innerHTML = names.map(n => `<span data-name="${esc(n)}">${esc(n)}</span>`).join('');
+  const want = new Set(names), fresh = [];
+  for (const [n, el] of chips) if (!want.has(n)) { el.remove(); chips.delete(n); }
+  names.forEach(n => {
+    if (chips.has(n)) return;
+    const el = document.createElement('span'); el.dataset.name = n; el.textContent = n;
+    $('names').appendChild(el); chips.set(n, el); fresh.push(el);
+  });
+  if (inLobby && fresh.length <= 3) fresh.forEach(el => Fx.burstAt(el, '#39ff88', 12));
 });
+socket.on('remote', ({ count }) => { $('rpill').hidden = !count; });
 // Two clicks to remove: first click arms the chip (turns red), second click kicks. Clicking elsewhere disarms.
 $('names').onclick = (e) => {
   const chip = e.target.closest('span[data-name]'); if (!chip) return;
@@ -217,51 +390,129 @@ $('names').onclick = (e) => {
 $('start').onclick = () => next('advance');
 
 // ---- question ----
+const RING = 2 * Math.PI * 44;
+function ring(frac, instant) {
+  const arc = $('arc');
+  arc.style.transition = instant ? 'none' : '';
+  arc.style.strokeDashoffset = RING * Math.min(1, Math.max(0, frac));
+  if (instant) arc.getBoundingClientRect();   // apply now, so the next change animates from here
+}
+// The question text "types" in, in about two thirds of a second.
+function typeIn(el, text, instant) {
+  el.style.fontSize = text.length > 220 ? '3.5vh' : text.length > 140 ? '4.2vh' : '';
+  if (instant) return void (el.textContent = text);
+  el.style.setProperty('--st', Math.min(9, 650 / Math.max(1, text.length)) + 'ms');
+  el.innerHTML = [...text].map((c, i) => c === ' ' ? ' ' : `<span class="ch" style="--i:${i}">${esc(c)}</span>`).join('');
+}
+function setMedia(src, credit) {
+  const m = $('media');
+  $('s-q').classList.toggle('pic', !!src);
+  m.hidden = !src; m.innerHTML = '';
+  if (!src) return;
+  const video = /\.(mp4|webm)$/i.test(src), still = !video && !/\.gif$/i.test(src);
+  m.className = 'media' + (still ? ' still' : '');
+  m.style.setProperty('--img', video ? 'none' : `url("${src}")`);
+  m.innerHTML = (video ? `<video src="${esc(src)}" autoplay muted loop playsinline></video>` : `<img src="${esc(src)}" alt="">`) +
+    (credit ? `<figcaption>${esc(credit)}</figcaption>` : '');
+  m.firstChild.onerror = () => { m.hidden = true; $('s-q').classList.remove('pic'); };   // missing file: fall back to the radar
+}
+function feed(html) {
+  const f = $('feed'), d = document.createElement('div');
+  d.innerHTML = '&gt; ' + html; f.appendChild(d);
+  while (f.children.length > 7) f.firstChild.remove();
+}
+function paintCount(n) {
+  if (String(n) !== $('acount').textContent) { $('acount').textContent = n; if (n) bump($('acount')); }
+  $('aof').textContent = players ? ` / ${players}` : '';
+  $('ameter').style.width = (players ? Math.min(100, n / players * 100) : 0) + '%';
+}
 socket.on('question', (q) => {
   qi = q.index; lastReveal = null;
-  $('qnum').textContent = `Question ${q.index + 1} of ${q.total}`;
+  const S = $('s-q'); S.classList.add('live'); S.classList.remove('shown');
+  $('qnum').innerHTML = `Q<b>${String(q.index + 1).padStart(2, '0')}</b>/${q.total}`;
+  $('prog').style.width = ((q.index + 1) / q.total * 100) + '%';
   $('dbl').hidden = !q.double;
-  $('qtext').textContent = q.q; $('acount').textContent = 0; $('chart').innerHTML = '';
-  $('fact').hidden = true; $('pct').hidden = true;
-  $('timer').hidden = false; $('timer').classList.remove('low'); $('skip').textContent = 'Skip ⏭';
+  typeIn($('qtext'), q.q, !q.time);
+  $('chart').innerHTML = ''; $('fact').hidden = true; $('pct').hidden = true;
+  setMedia(q.image, q.credit);
+  $('radar').innerHTML = ''; $('feed').innerHTML = '';
+  $('acount').textContent = ''; paintCount(0);
+  $('skip').textContent = 'Skip ⏭';
   $('tiles').innerHTML = q.answers.map((a, i) =>
-    `<div class="tile" style="background:${COLORS[i]}">${SHAPES[i]}<span>${esc(a)}</span></div>`).join('');
-  let left = q.time; $('timer').textContent = left;
+    `<div class="tile" style="--k:${COLORS[i]};--i:${i}">${KEYS[i]}<span>${esc(a)}</span></div>`).join('');
+  const limit = q.limit || q.time || 1, T = $('timer');
+  let left = q.time;
+  T.hidden = false; T.classList.remove('low', 'warn'); $('tnum').textContent = left;
+  ring((limit - left) / limit, true);
   clearInterval(timerInt);
   if (left > 0) {
-    Sfx.loop('think');
+    feed(`question <b>${q.index + 1}</b> sent to <b>${players}</b> device${players === 1 ? '' : 's'}`);
+    feed(`timer armed: <b>${limit}s</b>${q.double ? ' · <b>double points</b>' : ''}`);
+    Sfx.loop('think'); Fx.mood('live');
+    requestAnimationFrame(() => ring((limit - left + 1) / limit));   // glide toward the next second
     timerInt = setInterval(() => {
-      left = Math.max(0, left - 1); $('timer').textContent = left;
-      if (left <= 5) { $('timer').classList.add('low'); if (left) Sfx.tick(left === 1); }
+      left = Math.max(0, left - 1); $('tnum').textContent = left;
+      ring((limit - left + 1) / limit);
+      if (left <= 10) T.classList.add('warn');
+      if (left <= 5) { T.classList.add('low'); Fx.mood('danger'); if (left) Sfx.tick(left === 1); }
+      if (left === 5) feed('<b>5 seconds left</b>');
       if (!left) { clearInterval(timerInt); Sfx.loop(null); Sfx.timeUp(); }
     }, 1000);
   }
   show('s-q');
 });
-socket.on('answered', ({ answered }) => $('acount').textContent = answered);
+socket.on('answered', ({ answered, players: n }) => {
+  const before = +$('acount').textContent || 0;
+  if (n != null) players = n;
+  paintCount(answered);
+  if (answered <= before || !$('s-q').classList.contains('live')) return;
+  // One radar blip and one incoming "packet" per answer (capped, so a rush of 100 phones stays smooth).
+  for (let k = 0; k < Math.min(answered - before, 5); k++) {
+    const b = document.createElement('i'), a = Math.random() * 6.283, r = 8 + Math.random() * 38;
+    b.className = 'blip'; b.style.left = (50 + Math.cos(a) * r) + '%'; b.style.top = (50 + Math.sin(a) * r) + '%';
+    b.onanimationend = () => b.remove(); $('radar').appendChild(b);
+    Fx.packetTo($('acount'), b);   // flies from the radar blip to the counter
+  }
+  feed(`answer locked <b>${answered}</b>/${players}`);
+  if (players && answered >= players) feed('<b>all answers in</b>');
+});
 const pctLabel = (p) => p <= 25 ? 'got it right. Ouch!' : p >= 80 ? 'nailed it' : 'got it right';
 socket.on('reveal', (r) => {
   clearInterval(timerInt); lastReveal = r; Sfx.loop(null); Sfx.reveal();
-  $('timer').hidden = true; $('acount').textContent = r.answered;
-  if (r.answered) { $('pct').innerHTML = `<b>${r.pct}%</b>${pctLabel(r.pct)}`; $('pct').hidden = false; }
+  const S = $('s-q'); S.classList.remove('live'); S.classList.add('shown');
+  $('timer').hidden = true; paintCount(r.answered);
+  if (r.answered) {
+    $('pct').innerHTML = `<b>0%</b>${pctLabel(r.pct)}`; $('pct').classList.toggle('ouch', r.pct <= 25); $('pct').hidden = false;
+    countUp($('pct').firstChild, 0, r.pct, 700, (v) => v + '%');
+  }
   if (r.fact) { $('fact').textContent = '💡 ' + r.fact; $('fact').hidden = false; }
   const max = Math.max(1, ...r.counts);
   $('chart').innerHTML = r.counts.map((c, i) =>
-    `<div class="col ${i === r.correct ? '' : 'wrong'}">${c}<i style="background:${COLORS[i]};height:0"></i></div>`).join('');
-  requestAnimationFrame(() => [...$('chart').querySelectorAll('i')].forEach((el, i) => el.style.height = (r.counts[i] / max * 85) + '%'));
+    `<div class="col ${i === r.correct ? 'ok' : 'wrong'}" style="--k:${COLORS[i]}">${c}<i style="height:0"></i>${KEYS[i]}</div>`).join('');
+  requestAnimationFrame(() => [...$('chart').querySelectorAll('i')].forEach((el, i) => el.style.height = (r.counts[i] / max * 78) + '%'));
   [...$('tiles').children].forEach((t, i) => t.classList.add(i === r.correct ? 'right' : 'dim'));
+  Fx.mood('calm'); Fx.flash(); Fx.burstAt($('tiles').children[r.correct]);
+  preload(r.nextImage);
   $('skip').textContent = 'Scoreboard ▶';
   show('s-q');
 });
-$('skip').onclick = () => {
-  if (!lastReveal) return next('reveal');            // ends question early
+// "Skip" ends the question early; after the answer is shown the same button asks for the scoreboard.
+// The server sends 'board' back to every host screen, so the phone remote can do the same thing.
+$('skip').onclick = () => next(lastReveal ? 'board' : 'reveal');
+socket.on('board', () => {
+  if (!lastReveal) return;
+  const lb = lastReveal.leaderboard, topScore = Math.max(1, ...lb.map(p => p.score));
   const mv = (m) => m > 0 ? `<span class="mv up">▲${m}</span>` : m < 0 ? `<span class="mv down">▼${-m}</span>` : '<span class="mv"></span>';
-  $('board').innerHTML = lastReveal.leaderboard.map((p, i) =>
-    `<div class="row" style="animation-delay:${(lastReveal.leaderboard.length - i) * .12}s"><span>${p.rank}.</span><span class="nm">${esc(p.name)}</span>
-     ${mv(p.moved)}<b>${fmt(p.score)}</b><button class="kick" data-name="${esc(p.name)}" title="Remove player">✕</button></div>`).join('');
+  $('board').innerHTML = lb.map((p, i) =>
+    `<div class="row${i ? '' : ' top'}" style="animation-delay:${(lb.length - i) * .12}s"><span class="rk">${p.rank}</span><span class="nm">${esc(p.name)}</span>
+     ${mv(p.moved)}<b>${fmt(prevScore.get(p.name) || 0)}</b><button class="kick" data-name="${esc(p.name)}" title="Remove player">✕</button></div>`).join('');
+  [...$('board').children].forEach((row, i) => {
+    const p = lb[i], delay = (lb.length - i) * 120 + 350;
+    setTimeout(() => { row.style.setProperty('--w', (p.score / topScore * 100) + '%'); countUp(row.querySelector('b'), prevScore.get(p.name) || 0, p.score, 900); prevScore.set(p.name, p.score); }, delay);
+  });
   $('next').textContent = lastReveal.last ? 'Final results 🏆' : 'Next question ▶';
-  show('s-board');
-};
+  Fx.mood('calm'); show('s-board');
+});
 // Scoreboard ✕: removing mid-game needs a second click within 4 seconds.
 $('board').onclick = (e) => {
   const b = e.target.closest('.kick'); if (!b) return;
@@ -276,17 +527,20 @@ socket.on('final', ({ podium, awards = [] }) => {
   clearInterval(timerInt); Sfx.loop(null);
   const ROLL = 1.8;   // seconds of drumroll before the podium rises
   Sfx.drumroll(ROLL); Sfx.fanfare(ROLL + 1.2);
-  const order = [1, 0, 2], h = ['24vh', '32vh', '17vh'], col = ['#c0c0c0', 'var(--accent)', '#cd7f32'];
+  const order = [1, 0, 2], h = ['20vh', '26vh', '14vh'];
+  const metal = ['--m1:#f4f7fa;--m2:#8a97a3;--mg:rgba(200,215,230,.35)', '--m1:#ffe680;--m2:#d19c00;--mg:rgba(255,205,70,.55)', '--m1:#f3b987;--m2:#9c5a21;--mg:rgba(230,150,80,.35)'];
   $('podium').innerHTML = order.filter(i => podium[i]).map((i) => {
     const k = order.indexOf(i);
-    return `<div class="step" style="animation-delay:${ROLL + [.6, 1.2, 0][k]}s"><span class="nm">${esc(podium[i].name)}</span>
-     <span class="sc">${fmt(podium[i].score)} pts</span><div style="height:${h[k]};background:${col[k]}">${podium[i].rank}</div></div>`;
+    return `<div class="step" style="animation-delay:${ROLL + [.6, 1.2, 0][k]}s">${i ? '' : '<span class="crown">👑</span>'}<span class="nm">${esc(podium[i].name)}</span>
+     <span class="sc">${fmt(podium[i].score)} pts</span><div style="height:${h[k]};${metal[k]}">${podium[i].rank}</div></div>`;
   }).join('');
-  $('rest').innerHTML = podium.slice(3).map(p => `<span>${p.rank}. ${esc(p.name)}</span><b>${fmt(p.score)}</b>`).join('');
+  $('rest').innerHTML = podium.slice(3).map(p => `<div><span>${p.rank}. ${esc(p.name)}</span><b>${fmt(p.score)}</b></div>`).join('');
   $('awards').innerHTML = awards.length ? '<h3>Bonus prizes (outside the top 3)</h3>' + awards.map(a =>
     `<div class="award">${a.emoji} <b>${esc(a.title)}</b>: ${esc(a.name)} <span>· ${esc(a.detail)}</span></div>`).join('') : '';
   $('finalx').style.animationDelay = (ROLL + 2) + 's';
   $('finalx').hidden = !(podium.length > 3 || awards.length);
+  Fx.mood('win');
+  [ROLL + 1.3, ROLL + 2.6, ROLL + 4.2].forEach(s => setTimeout(() => Fx.confetti(), s * 1000));   // first burst as the winner's step lands
   store('hostPin', null); show('s-final');
 });
 $('again').onclick = () => { store('hostPin', null); location.reload(); };
