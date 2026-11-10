@@ -38,7 +38,7 @@ Game state is held in memory, so run a single instance. A Cloud Storage bucket i
 check-ins survive restarts. Passwords come from Secret Manager.
 
 ```bash
-gcloud run deploy event-quiz --source . --region us-central1 --allow-unauthenticated   --max-instances 1 --session-affinity --timeout 3600 --execution-environment gen2   --add-volume name=quiz,type=cloud-storage,bucket=YOUR-BUCKET   --add-volume-mount volume=quiz,mount-path=/mnt/quiz   --set-env-vars EVENTS_DIR=/mnt/quiz/events,DATA_DIR=/mnt/quiz/data,SHEET_WEBHOOK_URL=https://script.google.com/macros/s/.../exec   --set-secrets HOST_KEY=event-quiz-host-key:latest,SHEET_SECRET=event-quiz-sheet-secret:latest
+gcloud run deploy event-quiz --source . --region us-central1 --allow-unauthenticated   --max-instances 1 --concurrency 1000 --session-affinity --timeout 3600 --execution-environment gen2   --add-volume name=quiz,type=cloud-storage,bucket=YOUR-BUCKET   --add-volume-mount volume=quiz,mount-path=/mnt/quiz   --set-env-vars EVENTS_DIR=/mnt/quiz/events,DATA_DIR=/mnt/quiz/data,SHEET_WEBHOOK_URL=https://script.google.com/macros/s/.../exec   --set-secrets HOST_KEY=event-quiz-host-key:latest,SHEET_SECRET=event-quiz-sheet-secret:latest
 ```
 
 Then set `PUBLIC_URL` to the service URL (`gcloud run services update event-quiz --update-env-vars PUBLIC_URL=...`).
@@ -64,4 +64,4 @@ Direct HubSpot push (`HUBSPOT_TOKEN`) is still supported in `leads.js` but is of
 - [x] Player check-in and answer screen
 - [x] Question editor / spreadsheet import
 - [x] Durable lead storage and deploy
-- [ ] Load test 100+ players against the live server
+- [x] Load test: 150 players on the live server, 0 errors, answer p95 67ms (needs `--concurrency 1000`; the default 80 refuses player 81+)
