@@ -1,4 +1,4 @@
-// Event Quiz - live Kahoot-style quiz server with QR check-in.
+// Event Quiz - live quiz server with QR check-in.
 // One process holds all game state in memory (run Cloud Run with max-instances=1).
 const express = require('express');
 const http = require('http');
@@ -382,7 +382,7 @@ io.on('connection', (socket) => {
     const correct = choice === q.correct;
     p.streak = correct ? p.streak + 1 : 0;
     if (correct) { p.bestStreak = Math.max(p.bestStreak || 0, p.streak); p.fastest = Math.min(p.fastest ?? Infinity, elapsed); }
-    // Kahoot-style: up to 1000 pts, decaying to 500 at the buzzer, + small streak bonus; x2 on double-points questions
+    // Faster answers score more: up to 1000 pts, decaying to 500 at the buzzer, + small streak bonus; x2 on double-points questions
     const points = correct ? (Math.round(1000 * (1 - elapsed / time / 2)) + Math.min(p.streak - 1, 5) * 100) * (isDouble(g, g.qIndex) ? 2 : 1) : 0;
     p.score += points;
     g.answers.set(p.id, { choice, correct, points });

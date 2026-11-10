@@ -1,6 +1,6 @@
 # Event Quiz
 
-A live quiz game for events: players check in on their phones and race to answer on a shared screen, Kahoot-style. Made for 100+ players.
+A live quiz game for events: players check in on their phones and race to answer on a shared screen. Made for 100+ players.
 
 - Players scan a QR code and check in (name, email, phone, LinkedIn, consent). No app to install.
 - Each question has a timer, and faster correct answers score more, with a bonus for answer streaks.
