@@ -125,7 +125,7 @@ $('unlock').onclick = async () => {
   try { await refreshList(); try { sessionStorage.setItem('hostKey', key); } catch {} $('login').hidden = true; $('pick').hidden = false; }
   catch (e) { $('loginErr').textContent = e.message; }
 };
-$('key').onkeydown = (e) => e.key === 'Enter' && $('unlock').click();
+$('key').onkeydown = (e) => { if (e.key === 'Enter') $('unlock').click(); };
 try { const k = sessionStorage.getItem('hostKey'); if (k) { $('key').value = k; $('unlock').click(); } } catch {}
 
 async function refreshList() {

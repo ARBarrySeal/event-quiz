@@ -336,7 +336,7 @@ $('loadEvents').onclick = async () => {
   $('event').innerHTML = evs.map(e => `<option value="${esc(e.id)}">${esc(e.title)} (${e.questions} Qs) - ${esc(e.id)}</option>`).join('');
   $('event').hidden = $('create').hidden = false; $('loadEvents').hidden = $('key').hidden = true;
 };
-$('key').onkeydown = (e) => e.key === 'Enter' && $('loadEvents').click();
+$('key').onkeydown = (e) => { if (e.key === 'Enter') $('loadEvents').click(); };
 $('create').onclick = () => socket.emit('host:create', { key, eventId: $('event').value }, (r) => {
   if (r.error) return $('err').textContent = r.error;
   enterLobby(r);
