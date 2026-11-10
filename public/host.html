@@ -45,6 +45,7 @@
   .step .nm { font-size: 4vh; font-weight: 800; } .step .sc { font: 2.8vh var(--mono); color: var(--muted); margin-bottom: 1vh; }
   @keyframes rise { from { transform: translateY(40vh); opacity: 0 } }
   h1.title { font-size: 6vh; margin: 0; }
+  .sponsor { font-size: 2.6vh; }
 </style>
 </head>
 <body>
@@ -76,7 +77,7 @@
     </div>
   </div>
   <div class="names" id="names"></div>
-  <div class="bar"><span><b id="pcount">0</b> players</span><button class="btn" id="start">Start ▶</button></div>
+  <div class="bar"><span><b id="pcount">0</b> players</span><a data-sponsor></a><button class="btn" id="start">Start ▶</button></div>
 </section>
 
 <!-- 3. question / reveal -->
@@ -97,6 +98,7 @@
   <h1 class="title">Scoreboard</h1>
   <div class="board" id="board"></div>
   <button class="btn" id="next">Next ▶</button>
+  <a data-sponsor></a>
 </section>
 
 <!-- 5. final -->
@@ -108,6 +110,7 @@
     <a class="btn ghost" id="csv" href="#">Download check-ins (CSV)</a>
     <button class="btn ghost" id="again">New game</button>
   </div>
+  <a data-sponsor></a>
 </section>
 
 <script src="/socket.io/socket.io.js"></script>

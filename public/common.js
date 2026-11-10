@@ -6,6 +6,19 @@ const SHAPES = [
   '<svg class="shape" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4.6"/></svg>',        // circle
   '<svg class="shape" viewBox="0 0 10 10"><rect x=".8" y=".8" width="8.4" height="8.4"/></svg>' // square
 ];
+// Sponsor badge shown on the host and player screens. Edit here to rebrand.
+const SPONSOR = { name: 'DoD Cyber Consulting', url: 'https://dodcyberconsulting.com' };
+function renderSponsor() {
+  const shield = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="8" fill="#0a0a0a"/>' +
+    '<path d="M16 18 L32 12 L48 18 L48 34 C48 42 41 49 32 52 C23 49 16 42 16 34 Z" fill="none" stroke="#00d4ff" stroke-width="3" stroke-linejoin="round"/>' +
+    '<path d="M25 32 L30 37 L40 26" fill="none" stroke="#00d4ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  document.querySelectorAll('[data-sponsor]').forEach(a => {
+    a.className = 'sponsor'; a.href = SPONSOR.url; a.target = '_blank'; a.rel = 'noopener';
+    a.innerHTML = 'Presented by ' + shield + '<b>' + SPONSOR.name + '</b>';
+  });
+}
+renderSponsor();
+
 const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // Server disconnects every page after hours with no game activity so hosting can shut off. Stay disconnected.

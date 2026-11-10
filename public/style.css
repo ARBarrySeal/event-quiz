@@ -14,3 +14,7 @@ input, select { width: 100%; padding: 14px; border-radius: 10px; border: 1px sol
 .shape { width: 1.2em; height: 1.2em; flex: none; fill: #fff; }
 .evlogo { display: block; height: 14vh; max-width: 40vw; object-fit: contain; margin: 0 auto 1vh; }
 .evlogo[hidden] { display: none; }
+/* "Presented by" sponsor badge, filled in by common.js */
+.sponsor { display: inline-flex; align-items: center; gap: .45em; color: var(--muted); text-decoration: none; font-size: 14px; white-space: nowrap; }
+.sponsor svg { height: 1.7em; width: 1.7em; flex: none; }
+.sponsor b { color: #00d4ff; font-weight: 700; }
