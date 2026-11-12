@@ -58,7 +58,7 @@
   .pinbox { text-align: left; }
   .pinbox .lbl { font: 500 2.2vh var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .12em; }
   .pin { font: 800 14vh/1.05 var(--mono); letter-spacing: .04em; color: var(--accent); text-shadow: 0 0 1vh rgba(57, 255, 136, .8), 0 0 4vh rgba(57, 255, 136, .5); }
-  .url { font: 500 2.4vh var(--mono); color: var(--text); }
+  .url { font: 800 5vh/1.2 var(--mono); color: var(--accent); text-shadow: 0 0 1vh rgba(57, 255, 136, .6); overflow-wrap: anywhere; }
   .names { flex: 1; min-height: 0; display: flex; flex-wrap: wrap; gap: 1.1vh; align-content: flex-start; justify-content: center; overflow: hidden;
     -webkit-mask-image: linear-gradient(#000 72%, transparent); mask-image: linear-gradient(#000 72%, transparent); }
   .names:empty::before { content: "> waiting for players"; font: 500 2.6vh var(--mono); color: var(--muted); }
@@ -223,8 +223,7 @@
     <div class="pinbox">
       <div class="lbl">Scan the code, or go to</div>
       <div class="url" id="joinUrl"></div>
-      <div class="lbl" style="margin-top:2vh">Game PIN</div>
-      <div class="pin" id="pin"></div>
+      <div class="lbl" style="margin-top:2vh">No PIN needed</div>
     </div>
   </div>
   <div class="names" id="names"></div>
@@ -346,8 +345,7 @@ function enterLobby(r) {
   document.querySelectorAll('#lobbyLogo, [data-logo]').forEach(img => { img.hidden = !r.logo; if (r.logo) img.src = r.logo; });
   $('lobbyTitle').textContent = r.title; $('lobbyTitle').dataset.text = r.title;
   $('lobbySub').textContent = r.subtitle || ''; $('lobbySub').hidden = !r.subtitle;
-  $('pin').textContent = pin.replace(/(\d{3})(\d{3})/, '$1 $2');
-  $('qr').src = `/api/qr/${pin}.png`; $('joinUrl').textContent = `${location.host}/play.html?pin=${pin}`;
+  $('qr').src = '/api/qr.png'; $('joinUrl').textContent = `${location.host}/join`;
   $('csv').href = `/api/registrations.csv?key=${encodeURIComponent(key)}`;
   preload(r.preload); keepAwake();
   Fx.mood('calm'); show('s-lobby'); Sfx.loop('lobby');

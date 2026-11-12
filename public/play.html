@@ -25,7 +25,6 @@
   h1, h2 { margin: 0; } .muted { color: var(--muted); font-size: 14px; }
   label.chk { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--muted); text-align: left; }
   label.chk input { width: 22px; height: 22px; flex: none; margin: 0; }
-  .pinin { font: 800 32px var(--mono); text-align: center; letter-spacing: .2em; }
   .big { font-size: 72px; line-height: 1; }
   /* answer buttons */
   .qhead { display: flex; justify-content: space-between; align-items: center; font-weight: 700; color: var(--muted); }
@@ -65,12 +64,10 @@
     <img class="evlogo" id="joinLogo" alt="" hidden style="height:90px">
     <h2 id="evTitle">Join the game</h2>
     <div class="muted">Check in to play. Faster right answers score more.</div>
-    <input id="pin" class="pinin" inputmode="numeric" pattern="\d{6}" maxlength="6" placeholder="PIN" required>
     <div class="namerow"><input id="name" maxlength="24" placeholder="Screen name (shown on the big screen)" required autocomplete="nickname">
       <button type="button" class="dice" id="dice" title="Random hacker name" aria-label="Random hacker name">🎲</button></div>
     <input id="email" type="email" maxlength="120" placeholder="Email" required autocomplete="email">
     <input id="phone" type="tel" maxlength="30" placeholder="Phone (optional)" autocomplete="tel">
-    <input id="linkedin" maxlength="200" placeholder="LinkedIn URL or handle (optional)" autocapitalize="off">
     <label class="chk"><input type="checkbox" id="consent"> <span>OK to contact me about this event and related services. You can opt out anytime.</span></label>
     <button class="btn" id="joinBtn" type="submit">Join</button>
     <div class="err" id="err"></div>
@@ -167,29 +164,26 @@ $('dice').onclick = () => {
 };
 if (session) { $('waitTitle').textContent = 'Reconnecting…'; $('waitMsg').textContent = 'Getting you back into the game.'; show('s-wait'); }
 
-// Prefill PIN from the QR link, remember contact details on this phone
-const qsPin = new URLSearchParams(location.search).get('pin');
-if (qsPin) {
-  $('pin').value = qsPin.replace(/\D/g, '').slice(0, 6);
-  fetch('/api/game/' + $('pin').value).then(r => r.ok ? r.json() : null).then(g => {
-    if (!g) return;
-    $('evTitle').textContent = g.title; showLogo(g.logo);
-  }).catch(() => {});
-}
+// No PIN to type: the server puts the player in the game that is open. (An old link with ?pin= still works.)
+const qsPin = (new URLSearchParams(location.search).get('pin') || '').replace(/\D/g, '').slice(0, 6);
+fetch('/api/game/' + (qsPin || 'current')).then(r => r.ok ? r.json() : null).then(g => {
+  if (!g) return;
+  $('evTitle').textContent = g.title; showLogo(g.logo);
+}).catch(() => {});
+// Remember contact details on this phone
 try { const d = JSON.parse(localStorage.getItem('eq-contact') || '{}');
-  ['name','email','phone','linkedin'].forEach(k => d[k] && ($(k).value = d[k])); } catch {}
+  ['name','email','phone'].forEach(k => d[k] && ($(k).value = d[k])); } catch {}
 
 $('joinForm').addEventListener('submit', (e) => {
   e.preventDefault(); $('err').textContent = '';
-  const d = { pin: $('pin').value.trim(), name: $('name').value.trim(), email: $('email').value.trim(),
-    phone: $('phone').value.trim(), linkedin: $('linkedin').value.trim(), consent: $('consent').checked };
-  if (!/^\d{6}$/.test(d.pin)) return $('err').textContent = 'Enter the 6-digit PIN from the big screen';
+  const d = { pin: qsPin, name: $('name').value.trim(), email: $('email').value.trim(),
+    phone: $('phone').value.trim(), consent: $('consent').checked };
   $('joinBtn').disabled = true;
   socket.emit('player:join', d, (r) => {
     $('joinBtn').disabled = false;
     if (r.error) return $('err').textContent = r.error;
-    try { localStorage.setItem('eq-contact', JSON.stringify({ name: d.name, email: d.email, phone: d.phone, linkedin: d.linkedin })); } catch {}
-    save({ pin: d.pin, playerId: r.playerId });
+    try { localStorage.setItem('eq-contact', JSON.stringify({ name: d.name, email: d.email, phone: d.phone })); } catch {}
+    save({ pin: r.pin, playerId: r.playerId });
     enterGame(r.name, r.title, r.logo); setScore(r.score || 0);
     $('waitTitle').textContent = r.resumed ? 'Welcome back!' : "You're in!";
     $('waitMsg').textContent = r.resumed ? `You're playing as ${r.name}. Next question coming up…` : 'Look for your name on the big screen.';

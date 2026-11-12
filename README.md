@@ -2,7 +2,7 @@
 
 A live quiz game for events: players check in on their phones and race to answer on a shared screen. Made for 100+ players.
 
-- Players scan a QR code and check in (name, email, phone, LinkedIn, consent). No app to install.
+- Players scan a QR code and check in (name, email, phone, consent). No app to install. The QR code and join link (`/join`) never change and there is no PIN to type: players land in the game that is open, so the code can be printed ahead of time.
 - Each question has a timer, and faster correct answers score more, with a bonus for answer streaks.
 - A leaderboard shows after each question, and a final podium at the end.
 - The host can download every check-in as a CSV file.

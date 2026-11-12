@@ -30,6 +30,7 @@ const server = http.createServer(app);
 const io = new Server(server, { pingInterval: 10000, pingTimeout: 20000 });
 app.use(express.json({ limit: '1mb' }));
 app.get('/', (_, res) => res.redirect('/host.html'));
+app.get('/join', (_, res) => res.redirect('/play.html'));   // short link players can type
 app.use('/media', express.static(MEDIA_DIR, { index: false, maxAge: '1h', setHeaders: (res) => res.set('X-Content-Type-Options', 'nosniff') }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -37,6 +38,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 const games = new Map(); // pin -> game
 const newPin = () => { let p; do { p = String(crypto.randomInt(100000, 1000000)); } while (games.has(p)); return p; };
 const clean = (s, n = 200) => String(s ?? '').trim().slice(0, n);
+// The join link and QR code never change: players land on the newest game that hasn't finished.
+const currentGame = () => [...games.values()].filter(g => g.phase !== 'final').sort((a, b) => b.created - a.created)[0];
 const baseUrl = (req) => PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
 const isHost = (key) => typeof key === 'string' && key.length === HOST_KEY.length &&
   crypto.timingSafeEqual(Buffer.from(key), Buffer.from(HOST_KEY));
@@ -339,8 +342,8 @@ io.on('connection', (socket) => {
   // Phone joined or came back mid-question: send it with the time that's left
   const catchUp = (g, p) => { if (g.phase === 'question' && !g.answers.has(p.id)) socket.emit('question', questionPayload(g)); };
   socket.on('player:join', (d = {}, cb = () => {}) => {
-    const g = games.get(clean(d.pin, 6));
-    if (!g) return cb({ error: 'No game with that PIN' });
+    const g = games.get(clean(d.pin, 6)) || currentGame();   // no PIN needed; an old link with a PIN still works
+    if (!g) return cb({ error: 'The game is not open yet. Wait for the host, then tap Join again.' });
     if (g.phase === 'final') return cb({ error: 'This game has ended' });
     const p = { id: crypto.randomUUID(), name: clean(d.name, 24), email: clean(d.email, 120).toLowerCase(),
       phone: clean(d.phone, 30), linkedin: clean(d.linkedin, 200), consent: !!d.consent, score: 0, streak: 0, bestStreak: 0 };
@@ -352,7 +355,7 @@ io.on('connection', (socket) => {
     const mine = [...g.players.values()].find(x => x.email === p.email);
     if (mine) {
       attach(g, mine);
-      cb({ playerId: mine.id, name: mine.name, score: mine.score, resumed: true, title: g.event.title, logo: g.event.logo || '' });
+      cb({ pin: g.pin, playerId: mine.id, name: mine.name, score: mine.score, resumed: true, title: g.event.title, logo: g.event.logo || '' });
       return catchUp(g, mine);
     }
     if (isRudeName(p.name)) return cb({ error: 'Please pick a different screen name' });
@@ -360,7 +363,7 @@ io.on('connection', (socket) => {
       return cb({ error: 'That name is taken' });
     g.players.set(p.id, p); saveRegistration(g, p);
     attach(g, p);
-    cb({ playerId: p.id, name: p.name, score: 0, title: g.event.title, logo: g.event.logo || '' });
+    cb({ pin: g.pin, playerId: p.id, name: p.name, score: 0, title: g.event.title, logo: g.event.logo || '' });
     lobbyUpdate(g);
     catchUp(g, p);
   });
@@ -429,11 +432,12 @@ app.put('/api/media/:name', hostOnly, express.raw({ type: () => true, limit: '12
 });
 // Public: lets the check-in page show the event's title and logo before the player joins.
 app.get('/api/game/:pin', (req, res) => {
-  const g = games.get(req.params.pin);
+  const g = games.get(req.params.pin) || currentGame();
   g ? res.json({ title: g.event.title, logo: g.event.logo || '' }) : res.sendStatus(404);
 });
-app.get('/api/qr/:pin.png', async (req, res) => {
-  const url = `${baseUrl(req)}/play.html?pin=${encodeURIComponent(req.params.pin)}`;
+// One fixed code for every game, so it can be printed ahead of time.
+app.get(['/api/qr.png', '/api/qr/:pin.png'], async (req, res) => {
+  const url = `${baseUrl(req)}/play.html`;
   res.type('png').send(await QRCode.toBuffer(url, { width: 600, margin: 1 }));
 });
 app.get('/api/registrations.csv', async (req, res) => {
